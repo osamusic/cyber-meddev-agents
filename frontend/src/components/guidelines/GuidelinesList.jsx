@@ -281,12 +281,12 @@ const GuidelinesList = () => {
           <div className="mb-4">
             <h4 className="text-lg font-medium mb-2">キーワード</h4>
             <div className="flex flex-wrap gap-2">
-              {classification.keywords.map((keyword, index) => (
+              {classification.keywords.map((keywordObj, index) => (
                 <span
                   key={index}
                   className="bg-purple-100 text-purple-800 text-sm px-3 py-1 rounded-full"
                 >
-                  {keyword}
+                  {typeof keywordObj === 'object' ? keywordObj.keyword : keywordObj}
                 </span>
               ))}
             </div>
@@ -570,14 +570,15 @@ const GuidelinesList = () => {
                     </span>
                   ))}
                   {guideline.classification && guideline.classification.keywords && 
-                   guideline.classification.keywords.filter(k => 
-                     !guideline.keywords || !guideline.keywords.includes(k)
-                   ).map((keyword, index) => (
+                   guideline.classification.keywords.filter(k => {
+                     const keywordValue = typeof k === 'object' ? k.keyword : k;
+                     return !guideline.keywords || !guideline.keywords.includes(keywordValue);
+                   }).map((keyword, index) => (
                     <span
                       key={`classified-${index}`}
                       className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded"
                     >
-                      {keyword}
+                      {typeof keyword === 'object' ? keyword.keyword : keyword}
                     </span>
                   ))}
                 </div>
