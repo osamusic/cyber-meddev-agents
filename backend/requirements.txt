@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+openai
+llama-index
+requests
+python-dotenv
+sqlalchemy
+pydantic
+tqdm
+pymupdf
