@@ -107,7 +107,7 @@ class DocumentIndexer:
     def _create_empty_index(self) -> VectorStoreIndex:
         """Create a new empty index"""
         embed_model = CustomOpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-4o-mini")
+        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
@@ -133,7 +133,7 @@ class DocumentIndexer:
             config = IndexConfig()
         
         embed_model = CustomOpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-4o-mini")
+        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
