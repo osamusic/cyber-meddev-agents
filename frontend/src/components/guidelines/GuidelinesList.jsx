@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import { FaChevronDown, FaChevronRight, FaPlus } from 'react-icons/fa';
 
 const GuidelinesList = () => {
   const [guidelines, setGuidelines] = useState([]);
+  const [classifications, setClassifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -15,6 +17,11 @@ const GuidelinesList = () => {
   const [selectedRegion, setSelectedRegion] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  
+  const [selectedClassification, setSelectedClassification] = useState(null);
+  const [showClassificationDetail, setShowClassificationDetail] = useState(false);
+  const [showClassificationList, setShowClassificationList] = useState(true);
+  const [loadingClassifications, setLoadingClassifications] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -70,6 +77,29 @@ const GuidelinesList = () => {
     
     fetchData();
   }, [selectedCategory, selectedStandard, selectedRegion]);
+  
+  useEffect(() => {
+    const fetchClassifications = async () => {
+      try {
+        setLoadingClassifications(true);
+        console.log('分類データを取得中...');
+        
+        const response = await axiosClient.get('/classifier/all');
+        console.log('取得した分類データ:', response.data);
+        
+        setClassifications(response.data || []);
+      } catch (err) {
+        console.error('分類データ取得エラー:', err);
+        if (err.response) {
+          console.error('エラーレスポンス:', err.response.status, err.response.data);
+        }
+      } finally {
+        setLoadingClassifications(false);
+      }
+    };
+    
+    fetchClassifications();
+  }, []);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -121,6 +151,155 @@ const GuidelinesList = () => {
     );
   }
 
+  const createGuidelineFromClassification = async (classification) => {
+    if (!classification) return;
+    
+    try {
+      const nistCategory = classification.nist?.primary_category || '';
+      const iecRequirement = classification.iec?.primary_requirement || '';
+      const keywords = classification.keywords || [];
+      
+      let guidelineId = '';
+      if (nistCategory) {
+        guidelineId = `NIST-CSF-${nistCategory}`;
+      } else if (iecRequirement) {
+        guidelineId = `IEC-62443-${iecRequirement}`;
+      } else {
+        guidelineId = `CUSTOM-${Date.now()}`;
+      }
+      
+      const guidelineData = {
+        guideline_id: guidelineId,
+        category: nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom'),
+        standard: nistCategory || iecRequirement || 'Custom',
+        control_text: classification.summary || '分類結果から生成されたガイドライン',
+        source_url: '',
+        region: 'International',
+        keywords: keywords
+      };
+      
+      const response = await axiosClient.post('/guidelines/', guidelineData);
+      console.log('ガイドライン作成成功:', response.data);
+      
+      const guidelinesRes = await axiosClient.get('/guidelines');
+      setGuidelines(guidelinesRes.data || []);
+      
+      setSelectedClassification(null);
+      setShowClassificationDetail(false);
+      
+      return response.data;
+    } catch (err) {
+      console.error('ガイドライン作成エラー:', err);
+      if (err.response) {
+        console.error('エラーレスポンス:', err.response.status, err.response.data);
+        setError(`ガイドライン作成中にエラーが発生しました (${err.response.status}): ${err.response.data.detail || ''}`);
+      } else {
+        setError('ガイドライン作成中に予期しないエラーが発生しました。');
+      }
+      return null;
+    }
+  };
+  
+  const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) => {
+    if (!classification) return null;
+    
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-xl font-semibold">分類詳細</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            ✕
+          </button>
+        </div>
+        
+        <div className="mb-4">
+          <h4 className="text-lg font-medium mb-2">ドキュメント情報</h4>
+          <p><span className="font-medium">タイトル:</span> {classification.document_title}</p>
+          <p><span className="font-medium">作成日時:</span> {new Date(classification.created_at).toLocaleString('ja-JP')}</p>
+        </div>
+        
+        <div className="mb-4">
+          <h4 className="text-lg font-medium mb-2">要約</h4>
+          <p className="text-gray-700">{classification.summary}</p>
+        </div>
+        
+        {classification.nist && (
+          <div className="mb-4">
+            <h4 className="text-lg font-medium mb-2">NIST CSF分類</h4>
+            <p><span className="font-medium">主要カテゴリ:</span> {classification.nist.primary_category}</p>
+            <p><span className="font-medium">説明:</span> {classification.nist.explanation}</p>
+            
+            <div className="mt-2">
+              <h5 className="font-medium">カテゴリスコア:</h5>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                {Object.entries(classification.nist.categories || {}).map(([category, data]) => (
+                  <div key={category} className="bg-blue-50 p-2 rounded">
+                    <div className="flex justify-between">
+                      <span className="font-medium">{category}:</span>
+                      <span>{data.score}/10</span>
+                    </div>
+                    <p className="text-sm text-gray-600">{data.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {classification.iec && (
+          <div className="mb-4">
+            <h4 className="text-lg font-medium mb-2">IEC 62443分類</h4>
+            <p><span className="font-medium">主要要件:</span> {classification.iec.primary_requirement}</p>
+            <p><span className="font-medium">説明:</span> {classification.iec.explanation}</p>
+            
+            <div className="mt-2">
+              <h5 className="font-medium">要件スコア:</h5>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                {Object.entries(classification.iec.requirements || {}).map(([req, data]) => (
+                  <div key={req} className="bg-green-50 p-2 rounded">
+                    <div className="flex justify-between">
+                      <span className="font-medium">{req}:</span>
+                      <span>{data.score}/10</span>
+                    </div>
+                    <p className="text-sm text-gray-600">{data.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {classification.keywords && classification.keywords.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-lg font-medium mb-2">キーワード</h4>
+            <div className="flex flex-wrap gap-2">
+              {classification.keywords.map((keyword, index) => (
+                <span
+                  key={index}
+                  className="bg-purple-100 text-purple-800 text-sm px-3 py-1 rounded-full"
+                >
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={() => onCreateGuideline(classification)}
+            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded flex items-center"
+          >
+            <FaPlus className="mr-2" /> ガイドラインを作成
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">医療機器サイバーセキュリティガイドライン</h1>
@@ -130,6 +309,94 @@ const GuidelinesList = () => {
           {error}
         </div>
       )}
+      
+      {/* 選択された分類の詳細表示 */}
+      {showClassificationDetail && selectedClassification && (
+        <ClassificationDetail
+          classification={selectedClassification}
+          onClose={() => setShowClassificationDetail(false)}
+          onCreateGuideline={createGuidelineFromClassification}
+        />
+      )}
+      
+      {/* 分類データ一覧 */}
+      <div className="bg-white p-4 rounded-lg shadow-md mb-6">
+        <div 
+          className="flex justify-between items-center cursor-pointer"
+          onClick={() => setShowClassificationList(!showClassificationList)}
+        >
+          <h2 className="text-lg font-semibold">分類データ一覧</h2>
+          {showClassificationList ? <FaChevronDown /> : <FaChevronRight />}
+        </div>
+        
+        {showClassificationList && (
+          <div className="mt-4">
+            {loadingClassifications ? (
+              <div className="flex justify-center items-center h-24">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            ) : classifications.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">分類データがありません</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 mt-3">
+                {classifications.map((classification) => (
+                  <div
+                    key={classification.id}
+                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                      selectedClassification && selectedClassification.id === classification.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                    onClick={() => {
+                      setSelectedClassification(classification);
+                      setShowClassificationDetail(true);
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-medium">{classification.document_title}</h3>
+                      <span className="text-xs text-gray-500">
+                        {new Date(classification.created_at).toLocaleDateString('ja-JP')}
+                      </span>
+                    </div>
+                    
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {classification.nist && (
+                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                          NIST: {classification.nist.primary_category}
+                        </span>
+                      )}
+                      {classification.iec && (
+                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                          IEC: {classification.iec.primary_requirement}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {classification.summary && (
+                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                        {classification.summary}
+                      </p>
+                    )}
+                    
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedClassification(classification);
+                          setShowClassificationDetail(true);
+                        }}
+                      >
+                        詳細を表示
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-6">

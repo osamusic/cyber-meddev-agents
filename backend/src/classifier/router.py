@@ -170,6 +170,70 @@ async def get_classification_stats(
         "iec_requirements": iec_stats
     }
 
+@router.get("/all", response_model=List[Dict[str, Any]])
+async def get_all_classifications(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """すべての分類結果を取得"""
+    logger.info("すべての分類結果を取得中")
+    
+    subquery = db.query(
+        DBClassificationResult.document_id,
+        DBClassificationResult.id.label("latest_id")
+    ).distinct(
+        DBClassificationResult.document_id
+    ).order_by(
+        DBClassificationResult.document_id,
+        DBClassificationResult.created_at.desc()
+    ).subquery()
+    
+    classifications = db.query(DBClassificationResult).join(
+        subquery,
+        DBClassificationResult.id == subquery.c.latest_id
+    ).all()
+    
+    results = []
+    for classification in classifications:
+        try:
+            document = db.query(DBDocument).filter(DBDocument.id == classification.document_id).first()
+            if not document:
+                continue
+                
+            result_json = json.loads(classification.result_json)
+            
+            classification_data = {
+                "id": classification.id,
+                "document_id": classification.document_id,
+                "document_title": document.title if document else "不明なドキュメント",
+                "created_at": classification.created_at.isoformat(),
+                "summary": result_json.get("summary", ""),
+                "keywords": result_json.get("keywords", []),
+            }
+            
+            if "frameworks" in result_json and "NIST_CSF" in result_json["frameworks"]:
+                nist_data = result_json["frameworks"]["NIST_CSF"]
+                classification_data["nist"] = {
+                    "primary_category": nist_data.get("primary_category", ""),
+                    "categories": nist_data.get("categories", {}),
+                    "explanation": nist_data.get("explanation", "")
+                }
+            
+            if "frameworks" in result_json and "IEC_62443" in result_json["frameworks"]:
+                iec_data = result_json["frameworks"]["IEC_62443"]
+                classification_data["iec"] = {
+                    "primary_requirement": iec_data.get("primary_requirement", ""),
+                    "requirements": iec_data.get("requirements", {}),
+                    "explanation": iec_data.get("explanation", "")
+                }
+            
+            results.append(classification_data)
+        except Exception as e:
+            logger.error(f"分類結果の解析エラー: {str(e)}")
+    
+    logger.info(f"取得した分類結果: {len(results)}件")
+    return results
+
 async def classify_documents_background(
     documents: List[int],
     config: ClassificationConfig,
