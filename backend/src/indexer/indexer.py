@@ -148,9 +148,11 @@ class DocumentIndexer:
             
             try:
                 from llama_index.core import Settings, VectorStoreIndex as CoreVectorStoreIndex
+                from llama_index.core import StorageContext as CoreStorageContext
                 Settings.embed_model = None  # 埋め込みモデルなし
-                fallback_index = CoreVectorStoreIndex([])
-                logger.info("Fallback index created")
+                fallback_storage_context = CoreStorageContext.from_defaults()
+                fallback_index = CoreVectorStoreIndex([], storage_context=fallback_storage_context)
+                logger.info("Fallback index created with storage_context")
                 return fallback_index
             except Exception as fallback_error:
                 logger.error(f"Failed to create fallback index: {str(fallback_error)}")
@@ -206,7 +208,10 @@ class DocumentIndexer:
             self.index = self.index.insert_nodes(llama_docs, service_context=service_context)
             
             logger.info(f"Persisting index to {self.index_dir}...")
-            self.index.storage_context.persist(persist_dir=self.index_dir)
+            if hasattr(self.index, 'storage_context') and self.index.storage_context is not None:
+                self.index.storage_context.persist(persist_dir=self.index_dir)
+            else:
+                logger.warning("Index does not have a storage_context, skipping persistence")
             
             return len(llama_docs)
         except Exception as e:
