@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session as SQLAlchemySession
 from typing import List, Optional, Dict, Any
 import json
 import logging
+from datetime import datetime
 
 from ..db.database import get_db
 from ..db.models import Guideline as GuidelineModel, GuidelineKeyword, ClassificationResult
-from ..auth.auth import get_current_active_user
-from .models import Guideline, GuidelineSearch
+from ..auth.auth import get_current_active_user, get_admin_user
+from .models import Guideline, GuidelineSearch, GuidelineCreate
 
 logger = logging.getLogger(__name__)
 
@@ -158,3 +159,137 @@ async def search_guidelines(
         result.append(guideline_dict)
     
     return result
+
+@router.post("/", response_model=Guideline)
+async def create_guideline(
+    guideline: GuidelineCreate,
+    request: Request,
+    db: SQLAlchemySession = Depends(get_db),
+    current_user = Depends(get_admin_user)  # 管理者のみがガイドラインを作成可能
+):
+    """ガイドラインを作成（管理者のみ）"""
+    client_host = request.client.host if request.client else "unknown"
+    
+    existing = db.query(GuidelineModel).filter(GuidelineModel.guideline_id == guideline.guideline_id).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ガイドラインID '{guideline.guideline_id}' は既に存在します"
+        )
+    
+    db_guideline = GuidelineModel(
+        guideline_id=guideline.guideline_id,
+        category=guideline.category,
+        standard=guideline.standard,
+        control_text=guideline.control_text,
+        source_url=guideline.source_url,
+        region=guideline.region
+    )
+    
+    db.add(db_guideline)
+    db.flush()  # IDを取得するためにフラッシュする
+    
+    for keyword in guideline.keywords:
+        keyword_obj = GuidelineKeyword(
+            guideline_id=db_guideline.id,
+            keyword=keyword
+        )
+        db.add(keyword_obj)
+    
+    log_entry = {
+        "action": "guideline_create",
+        "timestamp": datetime.utcnow(),
+        "user_id": current_user.id,
+        "details": f"Guideline {guideline.guideline_id} created",
+        "ip_address": client_host
+    }
+    logger.info(f"AUDIT LOG: {log_entry}")
+    
+    try:
+        db.commit()
+        logger.info(f"ガイドライン '{guideline.guideline_id}' を作成しました")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"ガイドライン作成エラー: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ガイドライン作成中にエラーが発生しました: {str(e)}"
+        )
+    
+    keywords = [kw.keyword for kw in db_guideline.keywords]
+    
+    return {
+        "id": db_guideline.id,
+        "guideline_id": db_guideline.guideline_id,
+        "category": db_guideline.category,
+        "standard": db_guideline.standard,
+        "control_text": db_guideline.control_text,
+        "source_url": db_guideline.source_url,
+        "region": db_guideline.region,
+        "keywords": keywords
+    }
+@router.put("/{guideline_id}", response_model=Guideline)
+async def update_guideline(
+    guideline_id: str,
+    guideline: GuidelineCreate,
+    request: Request,
+    db: SQLAlchemySession = Depends(get_db),
+    current_user = Depends(get_admin_user)  # 管理者のみがガイドラインを更新可能
+):
+    """ガイドラインを更新（管理者のみ）"""
+    client_host = request.client.host if request.client else "unknown"
+    
+    db_guideline = db.query(GuidelineModel).filter(GuidelineModel.guideline_id == guideline_id).first()
+    if not db_guideline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ガイドラインID '{guideline_id}' が見つかりません"
+        )
+    
+    db_guideline.category = guideline.category
+    db_guideline.standard = guideline.standard
+    db_guideline.control_text = guideline.control_text
+    db_guideline.source_url = guideline.source_url
+    db_guideline.region = guideline.region
+    
+    db.query(GuidelineKeyword).filter(GuidelineKeyword.guideline_id == db_guideline.id).delete()
+    
+    for keyword in guideline.keywords:
+        keyword_obj = GuidelineKeyword(
+            guideline_id=db_guideline.id,
+            keyword=keyword
+        )
+        db.add(keyword_obj)
+    
+    log_entry = {
+        "action": "guideline_update",
+        "timestamp": datetime.utcnow(),
+        "user_id": current_user.id,
+        "details": f"Guideline {guideline_id} updated",
+        "ip_address": client_host
+    }
+    logger.info(f"AUDIT LOG: {log_entry}")
+    
+    try:
+        db.commit()
+        logger.info(f"ガイドライン '{guideline_id}' を更新しました")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"ガイドライン更新エラー: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ガイドライン更新中にエラーが発生しました: {str(e)}"
+        )
+    
+    keywords = [kw.keyword for kw in db_guideline.keywords]
+    
+    return {
+        "id": db_guideline.id,
+        "guideline_id": db_guideline.guideline_id,
+        "category": db_guideline.category,
+        "standard": db_guideline.standard,
+        "control_text": db_guideline.control_text,
+        "source_url": db_guideline.source_url,
+        "region": db_guideline.region,
+        "keywords": keywords
+    }
