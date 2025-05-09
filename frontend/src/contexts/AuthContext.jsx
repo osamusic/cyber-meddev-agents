@@ -57,13 +57,19 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (username, password) => {
+  const register = async (username, password, adminCode = null) => {
     setError(null);
     try {
-      await axiosClient.post('/auth/register', {
+      const registerData = {
         username,
         password,
-      });
+      };
+      
+      if (adminCode) {
+        registerData.admin_code = adminCode;
+      }
+      
+      await axiosClient.post('/auth/register', registerData);
       
       return await login(username, password);
     } catch (err) {
