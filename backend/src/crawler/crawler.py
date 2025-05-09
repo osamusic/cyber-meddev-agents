@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
 import logging
+import fitz  # PyMuPDF
 from .models import CrawlTarget, Document
 
 logging.basicConfig(level=logging.INFO)
@@ -86,7 +87,29 @@ class Crawler:
             
             elif content_type == 'application/pdf':
                 title = url.split('/')[-1]
-                content = f"PDF content from {url} - will be extracted with PyMuPDF"
+                try:
+                    pdf_data = response.content
+                    pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
+                    
+                    content = ""
+                    for page_num in range(len(pdf_document)):
+                        page = pdf_document[page_num]
+                        content += page.get_text()
+                    
+                    metadata = pdf_document.metadata
+                    if metadata.get('title') and metadata.get('title').strip():
+                        title = metadata.get('title')
+                    
+                    pdf_document.close()
+                    
+                    if not content.strip():
+                        content = f"PDF from {url} appears to contain no extractable text (may be scanned or image-based)"
+                        logger.warning(f"Empty content extracted from PDF: {url}")
+                
+                except Exception as e:
+                    logger.error(f"Error extracting content from PDF {url}: {str(e)}")
+                    content = f"Failed to extract content from PDF at {url}: {str(e)}"
+                
                 source_type = "PDF"
             
             else:
