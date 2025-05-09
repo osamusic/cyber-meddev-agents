@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Request
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import logging
@@ -26,22 +26,32 @@ classifier = DocumentClassifier()
 
 @router.post("/classify", response_model=ClassificationResult)
 async def classify_documents(
-    request: ClassificationRequest,
+    classification_request: ClassificationRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
     """ドキュメントを分類（管理者のみ）"""
-    logger.info(f"AUDIT LOG: {{'action': 'classify_documents', 'timestamp': {datetime.now()}, 'user_id': {current_user.id}, 'details': 'Classification requested for {len(request.document_ids)} documents', 'ip_address': '{current_user.last_login_ip}'}}")
+    client_host = request.client.host if request.client else "unknown"
+    
+    log_entry = {
+        "action": "classify_documents",
+        "timestamp": datetime.utcnow(),
+        "user_id": current_user.id,
+        "details": f"Classification requested for {len(classification_request.document_ids)} documents",
+        "ip_address": current_user.last_login_ip
+    }
+    logger.info(f"AUDIT LOG: {log_entry}")
     
     documents = []
     
-    if request.all_documents:
+    if classification_request.all_documents:
         documents = db.query(DBDocument).all()
-    elif request.document_ids:
-        documents = db.query(DBDocument).filter(DBDocument.id.in_(request.document_ids)).all()
-    elif request.section_ids:
-        documents = db.query(DBDocument).filter(DBDocument.section_id.in_(request.section_ids)).all()
+    elif classification_request.document_ids:
+        documents = db.query(DBDocument).filter(DBDocument.id.in_(classification_request.document_ids)).all()
+    elif classification_request.section_ids:
+        documents = db.query(DBDocument).filter(DBDocument.section_id.in_(classification_request.section_ids)).all()
     
     if not documents:
         raise HTTPException(
