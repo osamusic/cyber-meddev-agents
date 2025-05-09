@@ -1,25 +1,30 @@
-version: '3.8'
-
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        - OPENAI_API_KEY=${API_KEY_OPENAI_API_KEY}
+        - OPENAI_MODEL=gpt-3.5-turbo
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - ./storage:/app/storage
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=http://localhost:8000
+        - NODE_ENV=development
     ports:
       - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend

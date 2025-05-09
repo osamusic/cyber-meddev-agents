@@ -16,6 +16,8 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms import OpenAI
 import openai
 from dotenv import load_dotenv
+import httpx
+import sys
 
 from .models import IndexConfig, IndexStats
 
@@ -23,6 +25,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    logger.warning("OPENAI_API_KEY environment variable not set")
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+
+original_client_init = httpx.Client.__init__
+
+def patched_client_init(self, *args, **kwargs):
+    if 'proxies' in kwargs:
+        logger.info("Removing 'proxies' parameter from httpx.Client.__init__")
+        del kwargs['proxies']
+    original_client_init(self, *args, **kwargs)
+
+httpx.Client.__init__ = patched_client_init
+
+original_async_client_init = httpx.AsyncClient.__init__
+
+def patched_async_client_init(self, *args, **kwargs):
+    if 'proxies' in kwargs:
+        logger.info("Removing 'proxies' parameter from httpx.AsyncClient.__init__")
+        del kwargs['proxies']
+    original_async_client_init(self, *args, **kwargs)
+
+httpx.AsyncClient.__init__ = patched_async_client_init
+
+class CustomOpenAIEmbedding:
+    """Custom embedding class that wraps OpenAI API to avoid compatibility issues"""
+    
+    def __init__(self):
+        """Initialize with default parameters"""
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.model = "text-embedding-ada-002"
+    
+    def get_text_embedding(self, text: str) -> List[float]:
+        """Get embedding for a single text"""
+        response = openai.embeddings.create(
+            model=self.model,
+            input=text
+        )
+        return response.data[0].embedding
+    
+    def get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Get embeddings for multiple texts"""
+        response = openai.embeddings.create(
+            model=self.model,
+            input=texts
+        )
+        return [item.embedding for item in response.data]
 
 class DocumentIndexer:
     """Indexer for medical device cybersecurity documents"""
@@ -56,8 +109,8 @@ class DocumentIndexer:
     
     def _create_empty_index(self) -> VectorStoreIndex:
         """Create a new empty index"""
-        embed_model = OpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
+        embed_model = CustomOpenAIEmbedding()
+        llm = OpenAI(temperature=0, model=OPENAI_MODEL)
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
@@ -82,8 +135,8 @@ class DocumentIndexer:
         if config is None:
             config = IndexConfig()
         
-        embed_model = OpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
+        embed_model = CustomOpenAIEmbedding()
+        llm = OpenAI(temperature=0, model=OPENAI_MODEL)
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
