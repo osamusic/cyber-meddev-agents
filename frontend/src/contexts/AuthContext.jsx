@@ -33,10 +33,11 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     setError(null);
     try {
-      const response = await axiosClient.post('/auth/token', {
-        username,
-        password,
-      }, {
+      const formData = new URLSearchParams();
+      formData.append('username', username);
+      formData.append('password', password);
+      
+      const response = await axiosClient.post('/auth/token', formData.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
