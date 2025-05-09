@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import CrawlerForm from './CrawlerForm';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -15,32 +16,33 @@ const AdminDashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showCrawlerForm, setShowCrawlerForm] = useState(false);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      
+      const [usersRes, guidelinesRes, indexStatsRes] = await Promise.all([
+        axiosClient.get('/admin/users'),
+        axiosClient.get('/guidelines'),
+        axiosClient.get('/index/stats')
+      ]);
+      
+      setStats({
+        totalUsers: usersRes.data.length,
+        totalGuidelines: guidelinesRes.data.length,
+        totalDocuments: indexStatsRes.data.total_documents,
+        indexStats: indexStatsRes.data
+      });
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+      setError('統計情報の取得中にエラーが発生しました');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-        
-        const [usersRes, guidelinesRes, indexStatsRes] = await Promise.all([
-          axiosClient.get('/admin/users'),
-          axiosClient.get('/guidelines'),
-          axiosClient.get('/index/stats')
-        ]);
-        
-        setStats({
-          totalUsers: usersRes.data.length,
-          totalGuidelines: guidelinesRes.data.length,
-          totalDocuments: indexStatsRes.data.total_documents,
-          indexStats: indexStatsRes.data
-        });
-      } catch (err) {
-        console.error('Error fetching stats:', err);
-        setError('統計情報の取得中にエラーが発生しました');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchStats();
   }, []);
 
@@ -138,12 +140,21 @@ const AdminDashboard = () => {
           
           <button 
             className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded"
-            onClick={() => alert('この機能は実装中です')}
+            onClick={() => setShowCrawlerForm(!showCrawlerForm)}
           >
-            クローラーを実行
+            {showCrawlerForm ? 'フォームを閉じる' : 'クローラーを実行'}
           </button>
         </div>
       </div>
+
+      {showCrawlerForm && (
+        <CrawlerForm 
+          onCrawlComplete={(data) => {
+            fetchStats();
+            setShowCrawlerForm(false);
+          }} 
+        />
+      )}
     </div>
   );
 };
