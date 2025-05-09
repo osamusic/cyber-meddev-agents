@@ -40,6 +40,16 @@ def patched_client_init(self, *args, **kwargs):
 
 httpx.Client.__init__ = patched_client_init
 
+original_async_client_init = httpx.AsyncClient.__init__
+
+def patched_async_client_init(self, *args, **kwargs):
+    if 'proxies' in kwargs:
+        logger.info("Removing 'proxies' parameter from httpx.AsyncClient.__init__")
+        del kwargs['proxies']
+    original_async_client_init(self, *args, **kwargs)
+
+httpx.AsyncClient.__init__ = patched_async_client_init
+
 class CustomOpenAIEmbedding:
     """Custom embedding class that wraps OpenAI API to avoid compatibility issues"""
     

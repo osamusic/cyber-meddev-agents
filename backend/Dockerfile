@@ -2,10 +2,13 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# Define build arguments
+ARG OPENAI_API_KEY
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-# OpenAI API key will be passed from docker-compose
+ENV OPENAI_API_KEY=${OPENAI_API_KEY}
 
 COPY requirements.txt .
 
