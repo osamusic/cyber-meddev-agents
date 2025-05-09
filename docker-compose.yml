@@ -11,6 +11,7 @@ services:
     volumes:
       - ./backend:/app
       - ./storage:/app/storage
+      - ./data:/app/data
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
