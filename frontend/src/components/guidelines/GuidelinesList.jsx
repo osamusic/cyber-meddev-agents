@@ -234,12 +234,49 @@ const GuidelinesList = () => {
                 {guideline.control_text}
               </p>
               
+              {/* Classification results */}
+              {guideline.classification && (
+                <div className="mt-3 mb-3 pt-3 border-t border-gray-200">
+                  <h4 className="text-sm font-medium mb-2">分類結果:</h4>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {guideline.classification.nist && (
+                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                        NIST: {guideline.classification.nist}
+                      </span>
+                    )}
+                    {guideline.classification.iec && (
+                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                        IEC: {guideline.classification.iec}
+                      </span>
+                    )}
+                  </div>
+                  {guideline.classification.summary && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600 italic line-clamp-2">
+                        "{guideline.classification.summary}"
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div className="flex justify-between items-center">
                 <div className="flex flex-wrap gap-1">
-                  {guideline.keywords.map((keyword, index) => (
+                  {guideline.keywords && guideline.keywords.map((keyword, index) => (
                     <span
                       key={index}
                       className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded"
+                    >
+                      {keyword}
+                    </span>
+                  ))}
+                  {guideline.classification && guideline.classification.keywords && 
+                   guideline.classification.keywords.filter(k => 
+                     !guideline.keywords || !guideline.keywords.includes(k)
+                   ).map((keyword, index) => (
+                    <span
+                      key={`classified-${index}`}
+                      className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded"
                     >
                       {keyword}
                     </span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
 import CrawlerForm from './CrawlerForm';
+import ClassificationForm from './ClassificationForm';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -17,6 +18,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCrawlerForm, setShowCrawlerForm] = useState(false);
+  const [showClassificationForm, setShowClassificationForm] = useState(false);
   const [updatingIndex, setUpdatingIndex] = useState(false);
   const [indexUpdateMessage, setIndexUpdateMessage] = useState(null);
 
@@ -164,7 +166,7 @@ const AdminDashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-lg font-semibold mb-4">クイックアクション</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button 
             className={`bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded ${
               updatingIndex ? 'opacity-75 cursor-not-allowed' : ''
@@ -180,6 +182,13 @@ const AdminDashboard = () => {
             onClick={() => setShowCrawlerForm(!showCrawlerForm)}
           >
             {showCrawlerForm ? 'フォームを閉じる' : 'クローラーを実行'}
+          </button>
+          
+          <button 
+            className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded"
+            onClick={() => setShowClassificationForm(!showClassificationForm)}
+          >
+            {showClassificationForm ? 'フォームを閉じる' : 'ドキュメント分類'}
           </button>
         </div>
       </div>
@@ -201,6 +210,15 @@ const AdminDashboard = () => {
           onCrawlComplete={(data) => {
             fetchStats();
             setShowCrawlerForm(false);
+          }} 
+        />
+      )}
+      
+      {showClassificationForm && (
+        <ClassificationForm 
+          onClassifyComplete={(data) => {
+            fetchStats();
+            setShowClassificationForm(false);
           }} 
         />
       )}
