@@ -4,7 +4,7 @@ from datetime import datetime
 
 class IndexConfig(BaseModel):
     """Configuration for document indexing"""
-    chunk_size: int = 1024
+    chunk_size: int = 256
     chunk_overlap: int = 20
     embedding_model: str = "text-embedding-ada-002"
     
