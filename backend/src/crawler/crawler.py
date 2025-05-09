@@ -92,9 +92,11 @@ class Crawler:
         except Exception as e:
             logger.error(f"Error processing {url}: {str(e)}")
     
-    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: CrawlTarget = None) -> List[Document]:
+    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None) -> List[Document]:
         """大きなドキュメントを適切なサイズに分割する"""
-        max_size = target.max_document_size or self.max_document_size
+        max_size = self.max_document_size
+        if target and target.max_document_size:
+            max_size = target.max_document_size
         logger.info(f"Splitting document from {url} with max size {max_size}")
         
         if len(content) <= max_size:
@@ -206,11 +208,13 @@ class Crawler:
                 content = f"Content from {url} - format {content_type}"
                 source_type = content_type.split('/')[-1].upper()
             
+            title_str = str(title) if title is not None else url
+            
             return self._split_document(
                 content=content,
                 source_type=source_type,
                 url=url,
-                title=title,
+                title=title_str,
                 target=target
             )
             
