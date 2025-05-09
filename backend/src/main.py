@@ -14,6 +14,7 @@ from .guidelines.router import router as guidelines_router
 from .admin.router import router as admin_router
 from .indexer.router import router as indexer_router
 from .crawler.router import router as crawler_router
+from .classifier.router import router as classifier_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -32,6 +33,7 @@ app.include_router(guidelines_router)
 app.include_router(admin_router)
 app.include_router(indexer_router)
 app.include_router(crawler_router)
+app.include_router(classifier_router)
 
 @app.get("/")
 def read_root():
