@@ -119,7 +119,7 @@ class DocumentIndexer:
             llm=llm,
             embed_model=embed_model,
             node_parser=SimpleNodeParser.from_defaults(
-                chunk_size=1024,
+                chunk_size=256,
                 chunk_overlap=20
             )
         )
