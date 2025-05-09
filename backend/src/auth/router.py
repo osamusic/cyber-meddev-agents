@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session as SQLAlchemySession
 from datetime import timedelta
+import os
+from typing import Optional
 
 from .auth import (
     authenticate_user, 
@@ -41,15 +43,31 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/register", response_model=User)
-async def register_user(user: UserCreate, db: SQLAlchemySession = Depends(get_db)):
+async def register_user(
+    user: UserCreate, 
+    admin_code: Optional[str] = None,
+    db: SQLAlchemySession = Depends(get_db)
+):
     db_user = db.query(UserModel).filter(UserModel.username == user.username).first()
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="このユーザー名は既に使用されています"  # Username already in use
         )
+    
+    admin_secret = os.getenv("ADMIN_REGISTRATION_SECRET", "admin123")
+    is_admin = admin_code is not None and admin_code == admin_secret
+    
+    user_count = db.query(UserModel).count()
+    is_first_user = user_count == 0
+    
     hashed_password = get_password_hash(user.password)
-    db_user = UserModel(username=user.username, hashed_password=hashed_password)
+    db_user = UserModel(
+        username=user.username, 
+        hashed_password=hashed_password,
+        is_admin=is_admin or is_first_user
+    )
+    
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

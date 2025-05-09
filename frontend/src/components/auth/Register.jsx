@@ -6,6 +6,7 @@ const Register = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [adminCode, setAdminCode] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { register, error } = useAuth();
@@ -37,7 +38,7 @@ const Register = () => {
     setIsSubmitting(true);
     
     try {
-      const success = await register(username, password);
+      const success = await register(username, password, adminCode || null);
       if (success) {
         navigate('/guidelines');
       }
@@ -112,6 +113,23 @@ const Register = () => {
             {passwordError && (
               <p className="text-red-600 text-sm mt-1">{passwordError}</p>
             )}
+          </div>
+          
+          <div className="mb-6">
+            <label 
+              htmlFor="adminCode" 
+              className="block text-gray-700 font-medium mb-2"
+            >
+              管理者コード（オプション）
+            </label>
+            <input
+              type="password"
+              id="adminCode"
+              value={adminCode}
+              onChange={(e) => setAdminCode(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-gray-500 text-sm mt-1">管理者アカウントを作成する場合のみ入力してください</p>
           </div>
           
           <button

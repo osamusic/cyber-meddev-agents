@@ -5,11 +5,13 @@ services:
       args:
         - OPENAI_API_KEY=${API_KEY_OPENAI_API_KEY}
         - OPENAI_MODEL=gpt-3.5-turbo
+        - ADMIN_REGISTRATION_SECRET=${ADMIN_REGISTRATION_SECRET:-admin123}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - ./storage:/app/storage
+      - ./data:/app/data
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
