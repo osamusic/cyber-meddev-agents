@@ -19,7 +19,6 @@ const GuidelinesList = () => {
   const [isSearching, setIsSearching] = useState(false);
   
   const [selectedClassification, setSelectedClassification] = useState(null);
-  const [showClassificationDetail, setShowClassificationDetail] = useState(false);
   const [showClassificationList, setShowClassificationList] = useState(true);
   const [loadingClassifications, setLoadingClassifications] = useState(false);
 
@@ -209,7 +208,7 @@ const GuidelinesList = () => {
     if (!classification) return null;
     
     return (
-      <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
+      <div>
         <div className="flex justify-between items-start mb-4">
           <h3 className="text-xl font-semibold">分類詳細</h3>
           <button
@@ -315,14 +314,7 @@ const GuidelinesList = () => {
         </div>
       )}
       
-      {/* 選択された分類の詳細表示 */}
-      {showClassificationDetail && selectedClassification && (
-        <ClassificationDetail
-          classification={selectedClassification}
-          onClose={() => setShowClassificationDetail(false)}
-          onCreateGuideline={createGuidelineFromClassification}
-        />
-      )}
+      {/* 選択された分類の詳細表示はリスト内に移動 */}
       
       {/* 分類データ一覧 */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-6">
@@ -347,54 +339,59 @@ const GuidelinesList = () => {
                 {classifications.map((classification) => (
                   <div
                     key={classification.id}
-                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-                      selectedClassification && selectedClassification.id === classification.id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:bg-gray-50'
-                    }`}
-                    onClick={() => {
-                      setSelectedClassification(classification);
-                      setShowClassificationDetail(true);
-                    }}
+                    className="border rounded-lg transition-colors overflow-hidden"
                   >
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-medium">{classification.document_title}</h3>
-                      <span className="text-xs text-gray-500">
-                        {new Date(classification.created_at).toLocaleDateString('ja-JP')}
-                      </span>
-                    </div>
-                    
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {classification.nist && (
-                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                          NIST: {classification.nist.primary_category}
-                        </span>
-                      )}
-                      {classification.iec && (
-                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
-                          IEC: {classification.iec.primary_requirement}
-                        </span>
-                      )}
-                    </div>
-                    
-                    {classification.summary && (
-                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">
-                        {classification.summary}
-                      </p>
-                    )}
-                    
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                    <div 
+                      className={`p-3 cursor-pointer ${
+                        selectedClassification && selectedClassification.id === classification.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => {
+                        if (selectedClassification && selectedClassification.id === classification.id) {
+                          setSelectedClassification(null);
+                        } else {
                           setSelectedClassification(classification);
-                          setShowClassificationDetail(true);
-                        }}
-                      >
-                        詳細を表示
-                      </button>
+                        }
+                      }}
+                    >
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-medium">{classification.document_title}</h3>
+                        <span className="text-xs text-gray-500">
+                          {new Date(classification.created_at).toLocaleDateString('ja-JP')}
+                        </span>
+                      </div>
+                      
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {classification.nist && (
+                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                            NIST: {classification.nist.primary_category}
+                          </span>
+                        )}
+                        {classification.iec && (
+                          <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                            IEC: {classification.iec.primary_requirement}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {classification.summary && (
+                        <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                          {classification.summary}
+                        </p>
+                      )}
                     </div>
+                    
+                    {/* インライン詳細表示 */}
+                    {selectedClassification && selectedClassification.id === classification.id && (
+                      <div className="border-t border-gray-200 bg-white p-4">
+                        <ClassificationDetail
+                          classification={classification}
+                          onClose={() => setSelectedClassification(null)}
+                          onCreateGuideline={createGuidelineFromClassification}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
