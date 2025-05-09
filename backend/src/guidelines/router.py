@@ -94,20 +94,29 @@ async def get_guidelines(
 @router.get("/categories")
 async def get_categories(db: SQLAlchemySession = Depends(get_db)):
     """Get all unique categories"""
+    logger.info("カテゴリー一覧を取得中")
     categories = db.query(GuidelineModel.category).distinct().all()
-    return [category[0] for category in categories]
+    result = [cat[0] for cat in categories if cat[0]]
+    logger.info(f"取得したカテゴリー: {result}")
+    return result
 
 @router.get("/standards")
 async def get_standards(db: SQLAlchemySession = Depends(get_db)):
     """Get all unique standards"""
+    logger.info("標準規格一覧を取得中")
     standards = db.query(GuidelineModel.standard).distinct().all()
-    return [standard[0] for standard in standards]
+    result = [std[0] for std in standards if std[0]]
+    logger.info(f"取得した標準規格: {result}")
+    return result
 
 @router.get("/regions")
 async def get_regions(db: SQLAlchemySession = Depends(get_db)):
     """Get all unique regions"""
+    logger.info("地域一覧を取得中")
     regions = db.query(GuidelineModel.region).distinct().all()
-    return [region[0] for region in regions]
+    result = [reg[0] for reg in regions if reg[0]]
+    logger.info(f"取得した地域: {result}")
+    return result
 
 @router.post("/search", response_model=List[Guideline])
 async def search_guidelines(

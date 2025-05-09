@@ -20,6 +20,7 @@ const GuidelinesList = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        console.log('ガイドラインデータを取得中...');
         
         const [categoriesRes, standardsRes, regionsRes] = await Promise.all([
           axiosClient.get('/guidelines/categories'),
@@ -27,21 +28,40 @@ const GuidelinesList = () => {
           axiosClient.get('/guidelines/regions')
         ]);
         
-        setCategories(categoriesRes.data);
-        setStandards(standardsRes.data);
-        setRegions(regionsRes.data);
+        console.log('取得したカテゴリー:', categoriesRes.data);
+        console.log('取得した標準規格:', standardsRes.data);
+        console.log('取得した地域:', regionsRes.data);
+        
+        setCategories(categoriesRes.data || []);
+        setStandards(standardsRes.data || []);
+        setRegions(regionsRes.data || []);
         
         let url = '/guidelines?';
-        if (selectedCategory) url += `category=${selectedCategory}&`;
-        if (selectedStandard) url += `standard=${selectedStandard}&`;
-        if (selectedRegion) url += `region=${selectedRegion}&`;
+        if (selectedCategory) url += `category=${encodeURIComponent(selectedCategory)}&`;
+        if (selectedStandard) url += `standard=${encodeURIComponent(selectedStandard)}&`;
+        if (selectedRegion) url += `region=${encodeURIComponent(selectedRegion)}&`;
         
+        console.log('ガイドライン取得URL:', url);
         const guidelinesRes = await axiosClient.get(url);
-        setGuidelines(guidelinesRes.data);
+        console.log('取得したガイドライン:', guidelinesRes.data);
+        
+        setGuidelines(guidelinesRes.data || []);
         
       } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('データの取得中にエラーが発生しました。');
+        console.error('データ取得エラー:', err);
+        if (err.response) {
+          console.error('エラーレスポンス:', err.response.status, err.response.data);
+          if (err.response.status === 401) {
+            setError('認証エラー: ログインが必要です。再度ログインしてください。');
+          } else {
+            setError(`データの取得中にエラーが発生しました (${err.response.status}): ${err.response.data.detail || ''}`);
+          }
+        } else if (err.request) {
+          console.error('リクエストエラー:', err.request);
+          setError('サーバーに接続できませんでした。ネットワーク接続を確認してください。');
+        } else {
+          setError('データの取得中に予期しないエラーが発生しました。');
+        }
       } finally {
         setLoading(false);
         setIsSearching(false);

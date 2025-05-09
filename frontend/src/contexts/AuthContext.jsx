@@ -31,8 +31,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (username, password) => {
-    setError(null);
     try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('ログイン試行:', username);
+      
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
@@ -43,17 +47,31 @@ export const AuthProvider = ({ children }) => {
         }
       });
       
-      const { access_token } = response.data;
-      localStorage.setItem('token', access_token);
-      
-      const userResponse = await axiosClient.get('/me');
-      setUser(userResponse.data);
-      
-      return true;
+      if (response.data && response.data.access_token) {
+        console.log('ログイン成功: トークンを保存します');
+        localStorage.setItem('token', response.data.access_token);
+        
+        try {
+          const userResponse = await axiosClient.get('/me');
+          setUser(userResponse.data);
+          console.log('ユーザー情報を取得しました:', userResponse.data);
+        } catch (userErr) {
+          console.error('ユーザー情報取得エラー:', userErr);
+          setUser({ username });
+        }
+        
+        return true;
+      } else {
+        console.error('トークンが返却されませんでした');
+        setError('認証サーバーからトークンが返却されませんでした');
+        return false;
+      }
     } catch (err) {
-      console.error('Login error:', err);
-      setError(err.response?.data?.detail || 'ログインに失敗しました');
+      console.error('ログインエラー:', err);
+      setError(err.response?.data?.detail || 'ログイン中にエラーが発生しました');
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 

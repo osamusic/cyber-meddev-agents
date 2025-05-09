@@ -14,10 +14,15 @@ axiosClient.interceptors.request.use(
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('認証トークンを設定:', token.substring(0, 10) + '...');
+      console.log('リクエスト先:', config.url);
+    } else {
+      console.log('認証トークンなし - 未認証リクエスト:', config.url);
     }
     return config;
   },
   (error) => {
+    console.error('リクエストインターセプターエラー:', error);
     return Promise.reject(error);
   }
 );

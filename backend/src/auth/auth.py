@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session as SQLAlchemySession
 import os
+import logging
 from dotenv import load_dotenv
 
 from .models import TokenData, User
@@ -13,6 +14,8 @@ from ..db.database import get_db
 from ..db.models import User as UserModel
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "YOUR_SECRET_KEY_HERE")  # Should be loaded from environment
 ALGORITHM = "HS256"
@@ -32,11 +35,19 @@ def get_user(db: SQLAlchemySession, username: str):
     return db.query(UserModel).filter(UserModel.username == username).first()
 
 def authenticate_user(db: SQLAlchemySession, username: str, password: str):
+    logger.debug(f"認証試行: ユーザー名 '{username}'")
     user = get_user(db, username)
     if not user:
+        logger.debug(f"ユーザー '{username}' が見つかりません")
         return False
+    
+    logger.debug(f"パスワード検証: 入力されたパスワードの長さ {len(password)}")
+    
     if not verify_password(password, user.hashed_password):
+        logger.debug(f"ユーザー '{username}' のパスワードが一致しません")
         return False
+    
+    logger.debug(f"ユーザー '{username}' の認証に成功しました")
     return user
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
