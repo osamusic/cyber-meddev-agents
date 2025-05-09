@@ -1,0 +1,54 @@
+### 機能ごとの開発タスク分解
+backend構成
+cyber-med-agent/
+├── backend/
+│   ├── src/
+│   │   ├── crawler/
+│   │   ├── indexer/
+│   │   ├── classifier/
+│   │   ├── assessment/
+│   │   ├── auth/
+│   │   ├── guidelines/
+│   │   ├── admin/
+│   │   ├── db/
+│   │   ├── llm_provider/
+│   │   ├── i18n/
+│   │   └── main.py
+
+## Phase 1
+フェーズ	機能分類	モジュール名	主な内容・タスク例
+Phase 1	クローリング	crawler/	- FDA, NIST, PMDAからPDF/HTML収集
+- MIME型フィルタ
+- 差分取得・更新検知
+Phase 1	インデックス化	indexer/	- PDF/HTMLのテキスト抽出
+- セクション分割
+- LlamaIndexベクトル生成＋保存
+Phase 1	API構築（基本）	main.py, guidelines/	- FastAPIサーバー起動
+- /guidelines 検索API
+- /run エージェント呼び出し
+Phase 1	フロントエンド	frontend/	- ニュース/ガイドライン一覧ページ
+- 詳細画面（Markdown表示）
+- Tailwind UI
+Phase 1	JWT認証機能	auth/	- ユーザー管理
+- JWT発行・検証
+- /login, /me, /logout API
+Phase 1	自動実行	.github/	- GitHub Actions 設定（週次crawler/indexer実行）
+- 成果物の保存＋ログ追跡
+
+## Phase 2
+フェーズ	機能分類	モジュール名	主な内容・タスク例
+Phase 2	分類・要約	classifier/	- GPTを用いた対策分類（NIST, IEC）
+- セキュリティキーワード抽出・要約
+Phase 2	リスク評価	assessment/	- ユーザー入力に応じた脅威評価
+- CVSSテンプレート対応
+- 推奨対策の出力
+Phase 2	管理者機能	admin/	- ドキュメント削除/分類修正
+- ログ一覧
+- 管理者用UI
+Phase 2	DB構築	models.py, db/	- SQLite/PostgreSQLへのスキーマ定義
+- ORマッピング（SQLAlchemy）
+Phase 2	LLM切り替え	llm_provider/	- OpenAI / HuggingFace / Claude 対応切替
+- failover対策
+Phase 2	多言語対応	i18n/	- UIの多言語化（日本語/英語）
+- 文書言語判定・翻訳（DeepL, GPT）
+
