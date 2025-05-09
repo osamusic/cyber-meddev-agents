@@ -7,7 +7,7 @@ import json
 import os
 
 from ..db.database import get_db
-from ..db.models import Document as DBDocument, ClassificationResult as DBClassificationResult
+from ..db.models import DocumentModel as DBDocument, ClassificationResult as DBClassificationResult
 from ..auth.auth import get_current_active_user, get_current_admin_user
 from ..auth.models import User
 from .models import ClassificationRequest, ClassificationConfig, ClassificationResult

@@ -83,6 +83,9 @@ async def get_admin_user(current_user: User = Depends(get_current_user)):
         )
     return current_user
 
+async def get_current_admin_user(current_user: User = Depends(get_current_user)):
+    return await get_admin_user(current_user)
+
 def regenerate_session_after_login(request: Request, response: Response, user: UserModel):
     """
     Regenerate session after successful login to prevent session fixation attacks.
