@@ -19,6 +19,13 @@ from dotenv import load_dotenv
 
 from .models import IndexConfig, IndexStats
 
+class CustomOpenAIEmbedding(OpenAIEmbedding):
+    def _get_credential_kwargs(self):
+        credentials = super()._get_credential_kwargs()
+        if 'proxies' in credentials:
+            del credentials['proxies']
+        return credentials
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -56,8 +63,8 @@ class DocumentIndexer:
     
     def _create_empty_index(self) -> VectorStoreIndex:
         """Create a new empty index"""
-        embed_model = OpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
+        embed_model = CustomOpenAIEmbedding()
+        llm = OpenAI(temperature=0, model="gpt-4o-mini")
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
@@ -82,8 +89,8 @@ class DocumentIndexer:
         if config is None:
             config = IndexConfig()
         
-        embed_model = OpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
+        embed_model = CustomOpenAIEmbedding()
+        llm = OpenAI(temperature=0, model="gpt-4o-mini")
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
