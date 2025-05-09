@@ -5,6 +5,7 @@ const CrawlerForm = ({ onCrawlComplete }) => {
   const [url, setUrl] = useState('');
   const [depth, setDepth] = useState(2);
   const [mimeTypes, setMimeTypes] = useState(['application/pdf', 'text/html']);
+  const [updateExisting, setUpdateExisting] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
@@ -35,7 +36,8 @@ const CrawlerForm = ({ onCrawlComplete }) => {
         url,
         depth: parseInt(depth),
         mime_filters: mimeTypes,
-        name: `Crawl of ${url}`
+        name: `Crawl of ${url}`,
+        update_existing: updateExisting
       });
       
       setStatusMessage('クローラーが開始されました。処理が完了するまでしばらくお待ちください。');
@@ -141,6 +143,23 @@ const CrawlerForm = ({ onCrawlComplete }) => {
                 className="mr-2"
               />
               Word (DOCX)
+            </label>
+          </div>
+        </div>
+        
+        <div className="mb-4">
+          <span className="block text-gray-700 font-medium mb-2">
+            オプション
+          </span>
+          <div className="space-y-2">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={updateExisting}
+                onChange={() => setUpdateExisting(!updateExisting)}
+                className="mr-2"
+              />
+              既存のドキュメントを更新する（オフにすると重複をスキップ）
             </label>
           </div>
         </div>

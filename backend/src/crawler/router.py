@@ -77,7 +77,7 @@ async def get_crawler_status(
 def run_crawler_task(target: CrawlTarget, db: SQLAlchemySession, user_id: int):
     """バックグラウンドでクローラーを実行するタスク"""
     try:
-        crawler = Crawler()
+        crawler = Crawler(db=db)  # データベースセッションをクローラーに渡す
         documents = crawler.crawl(target)
         
         for doc in documents:

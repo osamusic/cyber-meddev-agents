@@ -14,12 +14,13 @@ logger = logging.getLogger(__name__)
 class Crawler:
     """Crawler for medical device cybersecurity documents"""
     
-    def __init__(self):
+    def __init__(self, db=None):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Cyber-Med-Agent Crawler/1.0'
         })
         self.visited_urls = set()
+        self.db = db  # データベースセッション
         
     def crawl(self, target: CrawlTarget) -> List[Document]:
         """Crawl a target URL and return extracted documents"""
@@ -41,6 +42,18 @@ class Crawler:
         
         self.visited_urls.add(url)
         logger.info(f"Crawling {url} (depth {depth})")
+        
+        doc_id = hashlib.sha256(url.encode()).hexdigest()
+        
+        if self.db is not None:
+            from ..db.models import DocumentModel
+            existing_doc = self.db.query(DocumentModel).filter(
+                DocumentModel.doc_id == doc_id
+            ).first()
+            
+            if existing_doc and not target.update_existing:
+                logger.info(f"Skipping existing document: {url}")
+                return
         
         try:
             response = self.session.get(url, timeout=30)

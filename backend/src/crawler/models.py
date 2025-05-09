@@ -8,6 +8,7 @@ class CrawlTarget(BaseModel):
     mime_filters: List[str] = ["application/pdf", "text/html", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
     depth: int = 2
     name: Optional[str] = None
+    update_existing: bool = True  # 既存のドキュメントを更新するかスキップするか
     
 class Document(BaseModel):
     """Document extracted from crawling"""
