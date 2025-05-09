@@ -113,22 +113,48 @@ class DocumentIndexer:
     
     def _create_empty_index(self) -> VectorStoreIndex:
         """Create a new empty index"""
-        embed_model = CustomOpenAIEmbedding()
-        llm = OpenAI(temperature=0, model=OPENAI_MODEL)
-        service_context = ServiceContext.from_defaults(
-            llm=llm,
-            embed_model=embed_model,
-            node_parser=SimpleNodeParser.from_defaults(
-                chunk_size=256,
-                chunk_overlap=20
+        try:
+            if not openai.api_key:
+                logger.error("OPENAI_API_KEY is not set. Cannot create index.")
+                raise ValueError("OPENAI_API_KEY is not set")
+            
+            logger.info("Creating embedding model...")
+            embed_model = CustomOpenAIEmbedding()
+            
+            logger.info(f"Creating LLM with model {OPENAI_MODEL}...")
+            llm = OpenAI(temperature=0, model=OPENAI_MODEL)
+            
+            logger.info("Creating service context...")
+            service_context = ServiceContext.from_defaults(
+                llm=llm,
+                embed_model=embed_model,
+                node_parser=SimpleNodeParser.from_defaults(
+                    chunk_size=256,
+                    chunk_overlap=20
+                )
             )
-        )
-        
-        index = VectorStoreIndex([], service_context=service_context)
-        
-        index.storage_context.persist(persist_dir=self.index_dir)
-        
-        return index
+            
+            logger.info("Creating empty vector store index...")
+            index = VectorStoreIndex([], service_context=service_context)
+            
+            logger.info(f"Persisting index to {self.index_dir}...")
+            index.storage_context.persist(persist_dir=self.index_dir)
+            
+            logger.info("Empty index created successfully")
+            return index
+        except Exception as e:
+            logger.error(f"Error creating empty index: {str(e)}")
+            logger.error("Creating fallback empty index...")
+            
+            try:
+                from llama_index.core import Settings, VectorStoreIndex as CoreVectorStoreIndex
+                Settings.embed_model = None  # 埋め込みモデルなし
+                fallback_index = CoreVectorStoreIndex([])
+                logger.info("Fallback index created")
+                return fallback_index
+            except Exception as fallback_error:
+                logger.error(f"Failed to create fallback index: {str(fallback_error)}")
+                raise RuntimeError(f"Could not create index: {str(e)}. Fallback also failed: {str(fallback_error)}")
     
     def index_documents(self, documents: List[Dict[str, Any]], config: Optional[IndexConfig] = None) -> int:
         """Index a list of documents"""
@@ -139,41 +165,53 @@ class DocumentIndexer:
         if config is None:
             config = IndexConfig()
         
-        embed_model = CustomOpenAIEmbedding()
-        llm = OpenAI(temperature=0, model=OPENAI_MODEL)
-        service_context = ServiceContext.from_defaults(
-            llm=llm,
-            embed_model=embed_model,
-            node_parser=SimpleNodeParser.from_defaults(
-                chunk_size=config.chunk_size,
-                chunk_overlap=config.chunk_overlap
+        if self.index is None:
+            logger.warning("Index is None, attempting to recreate...")
+            self.index = self._load_or_create_index()
+            if self.index is None:
+                logger.error("Failed to create index")
+                raise RuntimeError("Failed to create index")
+        
+        try:
+            embed_model = CustomOpenAIEmbedding()
+            llm = OpenAI(temperature=0, model=OPENAI_MODEL)
+            service_context = ServiceContext.from_defaults(
+                llm=llm,
+                embed_model=embed_model,
+                node_parser=SimpleNodeParser.from_defaults(
+                    chunk_size=config.chunk_size,
+                    chunk_overlap=config.chunk_overlap
+                )
             )
-        )
-        
-        llama_docs = []
-        for doc in documents:
-            doc_id = doc.get("doc_id", "")
-            content = doc.get("content", "")
-            metadata = {
-                "doc_id": doc_id,
-                "title": doc.get("title", ""),
-                "url": doc.get("url", ""),
-                "source_type": doc.get("source_type", ""),
-                "downloaded_at": doc.get("downloaded_at", datetime.now().isoformat())
-            }
             
-            doc_path = os.path.join(self.documents_dir, f"{doc_id}.json")
-            with open(doc_path, "w") as f:
-                json.dump(doc, f)
+            llama_docs = []
+            for doc in documents:
+                doc_id = doc.get("doc_id", "")
+                content = doc.get("content", "")
+                metadata = {
+                    "doc_id": doc_id,
+                    "title": doc.get("title", ""),
+                    "url": doc.get("url", ""),
+                    "source_type": doc.get("source_type", ""),
+                    "downloaded_at": doc.get("downloaded_at", datetime.now().isoformat())
+                }
+                
+                doc_path = os.path.join(self.documents_dir, f"{doc_id}.json")
+                with open(doc_path, "w") as f:
+                    json.dump(doc, f)
+                
+                llama_docs.append(Document(text=content, metadata=metadata))
             
-            llama_docs.append(Document(text=content, metadata=metadata))
-        
-        logger.info(f"Indexing {len(llama_docs)} documents...")
-        self.index = self.index.insert_nodes(llama_docs, service_context=service_context)
-        
-        self.index.storage_context.persist(persist_dir=self.index_dir)
-        
-        return len(llama_docs)
+            logger.info(f"Indexing {len(llama_docs)} documents...")
+            self.index = self.index.insert_nodes(llama_docs, service_context=service_context)
+            
+            logger.info(f"Persisting index to {self.index_dir}...")
+            self.index.storage_context.persist(persist_dir=self.index_dir)
+            
+            return len(llama_docs)
+        except Exception as e:
+            logger.error(f"Error indexing documents: {str(e)}")
+            raise
     
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search the index for documents matching the query"""
