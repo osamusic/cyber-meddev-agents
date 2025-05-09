@@ -1,6 +1,7 @@
 import requests
 import hashlib
 import mimetypes
+import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
@@ -14,13 +15,17 @@ logger = logging.getLogger(__name__)
 class Crawler:
     """Crawler for medical device cybersecurity documents"""
     
-    def __init__(self, db=None):
+    def __init__(self, db=None, target=None):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Cyber-Med-Agent Crawler/1.0'
         })
         self.visited_urls = set()
         self.db = db  # データベースセッション
+        
+        self.max_document_size = int(os.getenv("MAX_DOCUMENT_SIZE", "4000"))
+        if target and target.max_document_size:
+            self.max_document_size = target.max_document_size
         
     def crawl(self, target: CrawlTarget) -> List[Document]:
         """Crawl a target URL and return extracted documents"""
@@ -62,9 +67,9 @@ class Crawler:
             content_type = response.headers.get('Content-Type', '').split(';')[0]
             
             if content_type in target.mime_filters:
-                doc = self._process_document(url, response, content_type)
-                if doc:
-                    documents.append(doc)
+                result_docs = self._process_document(url, response, content_type, target)
+                if result_docs:
+                    documents.extend(result_docs)
             
             if content_type == 'text/html' and depth < target.depth:
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -87,8 +92,81 @@ class Crawler:
         except Exception as e:
             logger.error(f"Error processing {url}: {str(e)}")
     
-    def _process_document(self, url: str, response, content_type: str) -> Optional[Document]:
-        """Process a document based on its content type"""
+    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None) -> List[Document]:
+        """大きなドキュメントを適切なサイズに分割する"""
+        max_size = self.max_document_size
+        if target and target.max_document_size:
+            max_size = target.max_document_size
+        logger.info(f"Splitting document from {url} with max size {max_size}")
+        
+        if len(content) <= max_size:
+            doc_id = hashlib.sha256(url.encode()).hexdigest()
+            return [Document(
+                doc_id=doc_id,
+                url=url,
+                title=title,
+                content=content,
+                source_type=source_type,
+                downloaded_at=datetime.now(),
+                lang="en"
+            )]
+        
+        docs = []
+        chunks = []
+        
+        if source_type == "PDF":
+            page_breaks = content.split("\f")
+            current_chunk = ""
+            
+            for page in page_breaks:
+                if len(current_chunk) + len(page) > max_size and current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = page
+                else:
+                    current_chunk += page
+            
+            if current_chunk:
+                chunks.append(current_chunk)
+                
+        elif source_type == "HTML":
+            paragraphs = content.split("\n\n")
+            current_chunk = ""
+            
+            for para in paragraphs:
+                if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = para
+                else:
+                    if current_chunk:
+                        current_chunk += "\n\n"
+                    current_chunk += para
+            
+            if current_chunk:
+                chunks.append(current_chunk)
+                
+        else:
+            for i in range(0, len(content), max_size):
+                chunks.append(content[i:i+max_size])
+        
+        for i, chunk in enumerate(chunks):
+            chunk_id = hashlib.sha256(f"{url}_{i}".encode()).hexdigest()
+            chunk_title = f"{title} (Part {i+1}/{len(chunks)})"
+            
+            docs.append(Document(
+                doc_id=chunk_id,
+                url=url,
+                title=chunk_title,
+                content=chunk,
+                source_type=source_type,
+                downloaded_at=datetime.now(),
+                lang="en"
+            ))
+        
+        logger.info(f"Document from {url} split into {len(docs)} parts")
+        return docs
+        
+    def _process_document(self, url: str, response, content_type: str, target: CrawlTarget) -> List[Document]:
+        """Process a document based on its content type and split if necessary"""
         try:
             doc_id = hashlib.sha256(url.encode()).hexdigest()
             
@@ -130,18 +208,16 @@ class Crawler:
                 content = f"Content from {url} - format {content_type}"
                 source_type = content_type.split('/')[-1].upper()
             
-            lang = "en"  # Default to English
+            title_str = str(title) if title is not None else url
             
-            return Document(
-                doc_id=doc_id,
-                url=url,
-                title=title,
+            return self._split_document(
                 content=content,
                 source_type=source_type,
-                downloaded_at=datetime.now(),
-                lang=lang
+                url=url,
+                title=title_str,
+                target=target
             )
             
         except Exception as e:
             logger.error(f"Error processing document {url}: {str(e)}")
-            return None
+            return []
