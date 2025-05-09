@@ -17,6 +17,40 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCrawlerForm, setShowCrawlerForm] = useState(false);
+  const [updatingIndex, setUpdatingIndex] = useState(false);
+  const [indexUpdateMessage, setIndexUpdateMessage] = useState(null);
+
+  const handleUpdateIndex = async () => {
+    try {
+      setUpdatingIndex(true);
+      setIndexUpdateMessage({
+        type: 'info',
+        text: 'インデックスを更新中...'
+      });
+      
+      const response = await axiosClient.post('/index/documents');
+      
+      setIndexUpdateMessage({
+        type: 'success',
+        text: response.data.message || 'インデックスが正常に更新されました'
+      });
+      
+      await fetchStats();
+      
+    } catch (err) {
+      console.error('Error updating index:', err);
+      setIndexUpdateMessage({
+        type: 'error',
+        text: err.response?.data?.detail || 'インデックスの更新中にエラーが発生しました'
+      });
+    } finally {
+      setUpdatingIndex(false);
+      
+      setTimeout(() => {
+        setIndexUpdateMessage(null);
+      }, 5000);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -132,10 +166,13 @@ const AdminDashboard = () => {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button 
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded"
-            onClick={() => alert('この機能は実装中です')}
+            className={`bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded ${
+              updatingIndex ? 'opacity-75 cursor-not-allowed' : ''
+            }`}
+            onClick={handleUpdateIndex}
+            disabled={updatingIndex}
           >
-            インデックスを更新
+            {updatingIndex ? 'インデックス更新中...' : 'インデックスを更新'}
           </button>
           
           <button 
@@ -146,6 +183,18 @@ const AdminDashboard = () => {
           </button>
         </div>
       </div>
+
+      {indexUpdateMessage && (
+        <div className={`mt-4 px-4 py-3 rounded ${
+          indexUpdateMessage.type === 'success' 
+            ? 'bg-green-100 border border-green-400 text-green-700' 
+            : indexUpdateMessage.type === 'error'
+              ? 'bg-red-100 border border-red-400 text-red-700'
+              : 'bg-blue-100 border border-blue-400 text-blue-700'
+        }`}>
+          {indexUpdateMessage.text}
+        </div>
+      )}
 
       {showCrawlerForm && (
         <CrawlerForm 
