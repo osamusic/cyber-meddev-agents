@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from .db.database import engine, Base, get_db
+from .db.database import engine, get_db
+from .db.models import Base, User, DocumentModel, DocumentSection, Guideline, GuidelineKeyword
 from .auth.router import router as auth_router
 from .auth.auth import get_current_active_user
 from .guidelines.router import router as guidelines_router
