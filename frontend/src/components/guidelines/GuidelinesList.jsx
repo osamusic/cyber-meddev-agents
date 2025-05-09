@@ -39,9 +39,9 @@ const GuidelinesList = () => {
         console.log('取得した標準規格:', standardsRes.data);
         console.log('取得した地域:', regionsRes.data);
         
-        setCategories(categoriesRes.data || []);
-        setStandards(standardsRes.data || []);
-        setRegions(regionsRes.data || []);
+        setCategories(categoriesRes.data && categoriesRes.data.length > 0 ? categoriesRes.data : ['NIST CSF', 'IEC 62443', 'Custom']);
+        setStandards(standardsRes.data && standardsRes.data.length > 0 ? standardsRes.data : ['NIST-CSF-ID', 'IEC-62443-SR-1']);
+        setRegions(regionsRes.data && regionsRes.data.length > 0 ? regionsRes.data : ['International', 'Japan', 'US']);
         
         let url = '/guidelines?';
         if (selectedCategory) url += `category=${encodeURIComponent(selectedCategory)}&`;
@@ -134,7 +134,7 @@ const GuidelinesList = () => {
     setSearchQuery('');
   };
 
-  if (!loading && !error && guidelines.length === 0) {
+  if (!loading && !error && guidelines.length === 0 && classifications.length === 0) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-semibold mb-4">ガイドラインが見つかりません</h2>
@@ -181,7 +181,12 @@ const GuidelinesList = () => {
       const response = await axiosClient.post('/guidelines/', guidelineData);
       console.log('ガイドライン作成成功:', response.data);
       
-      const guidelinesRes = await axiosClient.get('/guidelines');
+      let url = '/guidelines?';
+      if (selectedCategory) url += `category=${encodeURIComponent(selectedCategory)}&`;
+      if (selectedStandard) url += `standard=${encodeURIComponent(selectedStandard)}&`;
+      if (selectedRegion) url += `region=${encodeURIComponent(selectedRegion)}&`;
+      
+      const guidelinesRes = await axiosClient.get(url);
       setGuidelines(guidelinesRes.data || []);
       
       setSelectedClassification(null);
@@ -495,6 +500,13 @@ const GuidelinesList = () => {
       {loading ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : guidelines.length === 0 ? (
+        <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+          <h3 className="text-lg font-semibold mb-4">ガイドラインがまだありません</h3>
+          <p className="text-gray-600 mb-4">
+            分類データから新しいガイドラインを作成できます。上部の「分類データ一覧」から選択してください。
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
