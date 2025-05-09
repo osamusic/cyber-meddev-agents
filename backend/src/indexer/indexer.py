@@ -76,6 +76,10 @@ class CustomOpenAIEmbedding:
             input=texts
         )
         return [item.embedding for item in response.data]
+        
+    def get_text_embedding_batch(self, texts: List[str]) -> List[List[float]]:
+        """Get embeddings for multiple texts (batch processing)"""
+        return self.get_text_embeddings(texts)
 
 class DocumentIndexer:
     """Indexer for medical device cybersecurity documents"""
