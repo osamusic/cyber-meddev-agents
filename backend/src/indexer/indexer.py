@@ -230,26 +230,26 @@ class DocumentIndexer:
                             })
                         })()
 
-    def index_documents(self, documents: List[Dict[str, Any]], config: Optional[IndexConfig] = None) -> int:
+    def index_documents(self, documents: List[Dict[str, Any]], config: Optional[IndexConfig] = None) -> Dict[str, int]:
         """Index a list of documents"""
         if not documents:
             logger.warning("No documents to index")
-            return 0
-
+            return {"indexed": 0, "skipped": 0, "total": 0}
+        
         if config is None:
             config = IndexConfig()
-
+        
         if self.index is None:
             logger.warning("Index is None, attempting to recreate...")
             self.index = self._load_or_create_index()
-
+        
         if not hasattr(self.index, 'insert_nodes') or not callable(getattr(self.index, 'insert_nodes', None)):
             logger.error("Index does not have a valid insert_nodes method")
             raise RuntimeError("Invalid index structure, unable to insert documents")
-
+            
         if not hasattr(self.index, 'storage_context'):
             logger.warning("Index does not have a storage_context attribute, some functionality may be limited")
-
+        
         try:
             embed_model = CustomOpenAIEmbedding()
             llm = OpenAI(temperature=0, model=OPENAI_MODEL)
@@ -261,11 +261,32 @@ class DocumentIndexer:
                     chunk_overlap=config.chunk_overlap
                 )
             )
-
+            
+            existing_docs = set()
+            if not config.force_reindex and os.path.exists(self.documents_dir):
+                for filename in os.listdir(self.documents_dir):
+                    if filename.endswith('.json'):
+                        doc_id = filename.replace('.json', '')
+                        existing_docs.add(doc_id)
+                logger.info(f"Found {len(existing_docs)} already indexed documents")
+            
+            new_docs = []
+            skipped_docs = []
+            
             llama_docs = []
             for doc in documents:
                 doc_id = doc.get("doc_id", "")
                 content = doc.get("content", "")
+                
+                if not doc_id:
+                    logger.warning("Skipping document with empty doc_id")
+                    continue
+                
+                if not config.force_reindex and doc_id in existing_docs:
+                    logger.info(f"Skipping already indexed document: {doc_id}")
+                    skipped_docs.append(doc_id)
+                    continue
+                
                 metadata = {
                     "doc_id": doc_id,
                     "title": doc.get("title", ""),
@@ -273,23 +294,27 @@ class DocumentIndexer:
                     "source_type": doc.get("source_type", ""),
                     "downloaded_at": doc.get("downloaded_at", datetime.now().isoformat())
                 }
-
+                
                 doc_path = os.path.join(self.documents_dir, f"{doc_id}.json")
                 with open(doc_path, "w") as f:
                     json.dump(doc, f)
-
+                
                 llama_docs.append(Document(text=content, metadata=metadata))
-
-            logger.info(f"Indexing {len(llama_docs)} documents...")
-            self.index.insert_nodes(llama_docs, service_context=service_context)
-
-            logger.info(f"Persisting index to {self.index_dir}...")
-            if hasattr(self.index, 'storage_context') and self.index.storage_context is not None:
-                self.index.storage_context.persist(persist_dir=self.index_dir)
+                new_docs.append(doc_id)
+            
+            if llama_docs:
+                logger.info(f"Indexing {len(llama_docs)} new documents...")
+                self.index.insert_nodes(llama_docs, service_context=service_context)
+                
+                logger.info(f"Persisting index to {self.index_dir}...")
+                if hasattr(self.index, 'storage_context') and self.index.storage_context is not None:
+                    self.index.storage_context.persist(persist_dir=self.index_dir)
+                else:
+                    logger.warning("Index does not have a storage_context, skipping persistence")
             else:
-                logger.warning("Index does not have a storage_context, skipping persistence")
-
-            return len(llama_docs)
+                logger.info("No new documents to index")
+            
+            return {"indexed": len(new_docs), "skipped": len(skipped_docs), "total": len(documents)}
         except Exception as e:
             logger.error(f"Error indexing documents: {str(e)}")
             raise

@@ -37,7 +37,12 @@ async def index_documents(
     
     num_indexed = indexer.index_documents(docs_to_index, config)
     
-    return {"message": f"{num_indexed} ドキュメントがインデックス化されました"}  # Documents indexed
+    result = {
+        "message": f"{num_indexed['indexed']} ドキュメントがインデックス化されました（{num_indexed['skipped']} ドキュメントはスキップされました）",
+        "stats": num_indexed
+    }
+    
+    return result
 
 @router.post("/search", response_model=List[Dict[str, Any]])
 async def search_index(query: SearchQuery):
