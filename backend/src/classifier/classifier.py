@@ -53,18 +53,31 @@ class DocumentClassifier:
             "timestamp": datetime.now().isoformat(),
             "frameworks": {},
             "keywords": [],
-            "summary": ""
+            "summary": "",
+            "intermediate_results": {}  # 中間結果を保存するための新しいフィールド
         }
+        
+        intermediate_results = {}
         
         for framework in frameworks:
             if framework == "NIST_CSF":
-                result["frameworks"]["NIST_CSF"] = self._classify_nist(document_text)
+                nist_result = self._classify_nist(document_text)
+                result["frameworks"]["NIST_CSF"] = nist_result
+                intermediate_results["NIST_CSF_raw"] = nist_result  # 中間結果を保存
             elif framework == "IEC_62443":
-                result["frameworks"]["IEC_62443"] = self._classify_iec(document_text)
+                iec_result = self._classify_iec(document_text)
+                result["frameworks"]["IEC_62443"] = iec_result
+                intermediate_results["IEC_62443_raw"] = iec_result  # 中間結果を保存
         
-        result["keywords"] = self._extract_keywords(document_text, config.keyword_config)
+        keywords = self._extract_keywords(document_text, config.keyword_config)
+        result["keywords"] = keywords
+        intermediate_results["keywords_raw"] = keywords  # 中間結果を保存
         
-        result["summary"] = self._summarize_document(document_text)
+        summary = self._summarize_document(document_text)
+        result["summary"] = summary
+        intermediate_results["summary_raw"] = summary  # 中間結果を保存
+        
+        result["intermediate_results"] = intermediate_results
         
         return result
     
@@ -87,40 +100,42 @@ class DocumentClassifier:
         各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
         
-        以下のJSON形式で回答してください:
+        以下のJSON形式で回答してください。有効なJSONのみを返してください。特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
             "categories": {{
                 "ID": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "PR": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "DE": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "RS": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "RC": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }}
             }},
             "primary_category": "最も関連性の高いカテゴリコード",
             "explanation": "全体的な分析と判断理由の要約"
         }}
+        
+        必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
         
         try:
             response = openai.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。"},
+                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
@@ -129,6 +144,20 @@ class DocumentClassifier:
             
             result = json.loads(response.choices[0].message.content)
             return result
+        except json.JSONDecodeError as e:
+            logger.error(f"NIST分類JSON解析エラー: {str(e)}")
+            logger.error(f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}")
+            return {
+                "categories": {
+                    "ID": {"score": 0, "reason": "JSON解析エラー"},
+                    "PR": {"score": 0, "reason": "JSON解析エラー"},
+                    "DE": {"score": 0, "reason": "JSON解析エラー"},
+                    "RS": {"score": 0, "reason": "JSON解析エラー"},
+                    "RC": {"score": 0, "reason": "JSON解析エラー"}
+                },
+                "primary_category": "エラー",
+                "explanation": f"JSON解析中にエラーが発生しました: {str(e)}"
+            }
         except Exception as e:
             logger.error(f"NIST分類エラー: {str(e)}")
             return {
@@ -164,48 +193,50 @@ class DocumentClassifier:
         各基本要件の関連度を0から10の数値で評価し、最も関連性の高い要件を特定してください。
         また、その判断理由を簡潔に説明してください。
         
-        以下のJSON形式で回答してください:
+        以下のJSON形式で回答してください。有効なJSONのみを返してください。特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
             "requirements": {{
                 "FR1": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "FR2": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "FR3": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "FR4": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "FR5": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "FR6": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }},
                 "FR7": {{
-                    "score": 0-10,
+                    "score": 0,
                     "reason": "理由"
                 }}
             }},
             "primary_requirement": "最も関連性の高い要件コード",
             "explanation": "全体的な分析と判断理由の要約"
         }}
+        
+        必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
         
         try:
             response = openai.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。"},
+                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
@@ -214,6 +245,22 @@ class DocumentClassifier:
             
             result = json.loads(response.choices[0].message.content)
             return result
+        except json.JSONDecodeError as e:
+            logger.error(f"IEC分類JSON解析エラー: {str(e)}")
+            logger.error(f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}")
+            return {
+                "requirements": {
+                    "FR1": {"score": 0, "reason": "JSON解析エラー"},
+                    "FR2": {"score": 0, "reason": "JSON解析エラー"},
+                    "FR3": {"score": 0, "reason": "JSON解析エラー"},
+                    "FR4": {"score": 0, "reason": "JSON解析エラー"},
+                    "FR5": {"score": 0, "reason": "JSON解析エラー"},
+                    "FR6": {"score": 0, "reason": "JSON解析エラー"},
+                    "FR7": {"score": 0, "reason": "JSON解析エラー"}
+                },
+                "primary_requirement": "エラー",
+                "explanation": f"JSON解析中にエラーが発生しました: {str(e)}"
+            }
         except Exception as e:
             logger.error(f"IEC分類エラー: {str(e)}")
             return {
