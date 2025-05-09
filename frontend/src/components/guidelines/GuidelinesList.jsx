@@ -159,6 +159,9 @@ const GuidelinesList = () => {
       const nistCategory = classification.nist?.primary_category || '';
       const iecRequirement = classification.iec?.primary_requirement || '';
       const keywords = classification.keywords || [];
+      const processedKeywords = keywords.map(keyword => 
+        typeof keyword === 'object' ? keyword.keyword : keyword
+      );
       
       let guidelineId = '';
       if (nistCategory) {
@@ -169,14 +172,23 @@ const GuidelinesList = () => {
         guidelineId = `CUSTOM-${Date.now()}`;
       }
       
+      let documentUrl = '';
+      try {
+        const documentResponse = await axiosClient.get(`/documents/${classification.document_id}`);
+        documentUrl = documentResponse.data.source_url || `https://example.com/document/${classification.document_id}`;
+      } catch (docErr) {
+        console.warn('ドキュメント情報取得エラー:', docErr);
+        documentUrl = `https://example.com/document/${classification.document_id}`;
+      }
+      
       const guidelineData = {
         guideline_id: guidelineId,
         category: nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom'),
         standard: nistCategory || iecRequirement || 'Custom',
         control_text: classification.summary || '分類結果から生成されたガイドライン',
-        source_url: '',
+        source_url: documentUrl,
         region: 'International',
-        keywords: keywords
+        keywords: processedKeywords
       };
       
       const response = await axiosClient.post('/guidelines/', guidelineData);
@@ -196,12 +208,37 @@ const GuidelinesList = () => {
       return response.data;
     } catch (err) {
       console.error('ガイドライン作成エラー:', err);
+      
       if (err.response) {
         console.error('エラーレスポンス:', err.response.status, err.response.data);
-        setError(`ガイドライン作成中にエラーが発生しました (${err.response.status}): ${err.response.data.detail || ''}`);
+        
+        if (err.response.status === 422) {
+          const validationErrors = err.response.data.detail || [];
+          if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+            const errorMessages = validationErrors.map(error => 
+              `${error.loc.join('.')}：${error.msg}`
+            ).join('\n');
+            setError(`ガイドライン作成のバリデーションエラー:\n${errorMessages}`);
+          } else {
+            setError(`ガイドライン作成のバリデーションエラー: ${JSON.stringify(err.response.data)}`);
+          }
+        } else if (err.response.status === 401 || err.response.status === 403) {
+          setError(`権限エラー: ガイドラインを作成する権限がありません (${err.response.status})`);
+        } else {
+          const errorDetail = err.response.data.detail || '';
+          const errorMessage = typeof errorDetail === 'string' 
+            ? errorDetail 
+            : JSON.stringify(errorDetail);
+          setError(`ガイドライン作成中にエラーが発生しました (${err.response.status}): ${errorMessage}`);
+        }
+      } else if (err.request) {
+        console.error('リクエストエラー:', err.request);
+        setError('サーバーに接続できませんでした。ネットワーク接続を確認してください。');
       } else {
-        setError('ガイドライン作成中に予期しないエラーが発生しました。');
+        console.error('リクエスト設定エラー:', err.message);
+        setError(`ガイドライン作成中に予期しないエラーが発生しました: ${err.message}`);
       }
+      
       return null;
     }
   };
