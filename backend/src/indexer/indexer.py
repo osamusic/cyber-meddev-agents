@@ -16,6 +16,8 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms import OpenAI
 import openai
 from dotenv import load_dotenv
+import httpx
+import sys
 
 from .models import IndexConfig, IndexStats
 
@@ -27,6 +29,16 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     logger.warning("OPENAI_API_KEY environment variable not set")
+
+original_client_init = httpx.Client.__init__
+
+def patched_client_init(self, *args, **kwargs):
+    if 'proxies' in kwargs:
+        logger.info("Removing 'proxies' parameter from httpx.Client.__init__")
+        del kwargs['proxies']
+    original_client_init(self, *args, **kwargs)
+
+httpx.Client.__init__ = patched_client_init
 
 class CustomOpenAIEmbedding:
     """Custom embedding class that wraps OpenAI API to avoid compatibility issues"""
