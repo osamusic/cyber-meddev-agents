@@ -40,7 +40,7 @@ async def classify_documents(
         "timestamp": datetime.utcnow(),
         "user_id": current_user.id,
         "details": f"Classification requested for {len(classification_request.document_ids)} documents",
-        "ip_address": current_user.last_login_ip
+        "ip_address": client_host
     }
     logger.info(f"AUDIT LOG: {log_entry}")
     
