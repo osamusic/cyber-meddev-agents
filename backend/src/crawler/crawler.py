@@ -93,7 +93,7 @@ class Crawler:
         except Exception as e:
             logger.error(f"Error processing {url}: {str(e)}")
     
-    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None) -> List[Document]:
+    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None, toc_info: Optional[List[Dict]] = None) -> List[Document]:
         """大きなドキュメントを適切なサイズに分割する"""
         max_size = self.max_document_size
         if target and target.max_document_size:
@@ -115,7 +115,83 @@ class Crawler:
         docs = []
         chunks = []
         
-        if source_type == "PDF":
+        if source_type == "PDF" and toc_info and len(toc_info) > 0:
+            logger.info(f"Attempting TOC-based splitting for {url} with {len(toc_info)} TOC entries")
+            
+            chapters = []
+            current_chapter = None
+            
+            for entry in toc_info:
+                if entry["level"] == 1:
+                    if current_chapter:
+                        chapters.append(current_chapter)
+                    current_chapter = {
+                        "title": entry["title"],
+                        "content": f"[CHAPTER: {entry['title']}]\n{entry['text']}",
+                        "page_nums": {entry["page_num"]}  # 重複を避けるためにセットを使用
+                    }
+                elif current_chapter:
+                    current_chapter["content"] += f"\n[SECTION: {entry['title']}]\n{entry['text']}"
+                    current_chapter["page_nums"].add(entry["page_num"])
+            
+            if current_chapter:
+                chapters.append(current_chapter)
+            
+            if chapters:
+                logger.info(f"Found {len(chapters)} chapters for TOC-based splitting")
+                
+                for chapter in chapters:
+                    chapter_content = chapter["content"]
+                    chapter_title = chapter["title"]
+                    
+                    if len(chapter_content) <= max_size:
+                        chunks.append({
+                            "title": chapter_title,
+                            "content": chapter_content
+                        })
+                    else:
+                        paragraphs = chapter_content.split("\n\n")
+                        current_chunk = ""
+                        current_chunk_title = chapter_title
+                        chunk_count = 1
+                        
+                        for para in paragraphs:
+                            if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
+                                chunks.append({
+                                    "title": f"{current_chunk_title} (Part {chunk_count})",
+                                    "content": current_chunk
+                                })
+                                chunk_count += 1
+                                current_chunk = para
+                            else:
+                                if current_chunk:
+                                    current_chunk += "\n\n"
+                                current_chunk += para
+                        
+                        if current_chunk:
+                            chunks.append({
+                                "title": f"{current_chunk_title} (Part {chunk_count})",
+                                "content": current_chunk
+                            })
+            
+            if not chunks:
+                logger.warning(f"TOC-based splitting failed for {url}, falling back to page-based splitting")
+                import re
+                page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
+                page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
+                
+                current_chunk = ""
+                for page in page_breaks:
+                    if len(current_chunk) + len(page) > max_size and current_chunk:
+                        chunks.append({"title": title, "content": current_chunk})
+                        current_chunk = page
+                    else:
+                        current_chunk += page
+                
+                if current_chunk:
+                    chunks.append({"title": title, "content": current_chunk})
+            
+        elif source_type == "PDF":
             import re
             page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
             page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
@@ -123,13 +199,13 @@ class Crawler:
             current_chunk = ""
             for page in page_breaks:
                 if len(current_chunk) + len(page) > max_size and current_chunk:
-                    chunks.append(current_chunk)
+                    chunks.append({"title": title, "content": current_chunk})
                     current_chunk = page
                 else:
                     current_chunk += page
             
             if current_chunk:
-                chunks.append(current_chunk)
+                chunks.append({"title": title, "content": current_chunk})
                 
         elif source_type == "HTML":
             paragraphs = content.split("\n\n")
@@ -137,7 +213,7 @@ class Crawler:
             
             for para in paragraphs:
                 if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
-                    chunks.append(current_chunk)
+                    chunks.append({"title": title, "content": current_chunk})
                     current_chunk = para
                 else:
                     if current_chunk:
@@ -145,21 +221,26 @@ class Crawler:
                     current_chunk += para
             
             if current_chunk:
-                chunks.append(current_chunk)
+                chunks.append({"title": title, "content": current_chunk})
                 
         else:
             for i in range(0, len(content), max_size):
-                chunks.append(content[i:i+max_size])
+                chunks.append({"title": title, "content": content[i:i+max_size]})
         
         for i, chunk in enumerate(chunks):
+            chunk_content = chunk["content"]
+            chunk_title = chunk["title"]
+            
+            if chunk_title == title:
+                chunk_title = f"{title} (Part {i+1}/{len(chunks)})"
+            
             chunk_id = hashlib.sha256(f"{url}_{i}".encode()).hexdigest()
-            chunk_title = f"{title} (Part {i+1}/{len(chunks)})"
             
             docs.append(Document(
                 doc_id=chunk_id,
                 url=url,
                 title=chunk_title,
-                content=chunk,
+                content=chunk_content,
                 source_type=source_type,
                 downloaded_at=datetime.now(),
                 lang="en"
@@ -178,6 +259,7 @@ class Crawler:
                 title = soup.title.string if soup.title else url
                 content = soup.get_text(separator='\n', strip=True)
                 source_type = "HTML"
+                toc_info = None
             
             elif content_type == 'application/pdf':
                 title = url.split('/')[-1]
@@ -185,10 +267,27 @@ class Crawler:
                     pdf_data = response.content
                     pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
                     
+                    toc = pdf_document.get_toc()
+                    toc_info = None
+                    if toc:
+                        logger.info(f"PDF from {url} has TOC with {len(toc)} entries")
+                        toc_info = []
+                        for level, title, page_num in toc:
+                            if 0 <= page_num < len(pdf_document):
+                                page_text = pdf_document[page_num].get_text()
+                                toc_info.append({
+                                    "level": level,
+                                    "title": title,
+                                    "page_num": page_num,
+                                    "text": page_text
+                                })
+                    
                     content = ""
+                    page_contents = []
                     for page_num in range(len(pdf_document)):
                         page = pdf_document[page_num]
                         page_text = page.get_text()
+                        page_contents.append(page_text)
                         content += f"[PAGE_{page_num}]\n{page_text}\n[/PAGE_{page_num}]\n"
                     
                     metadata = pdf_document.metadata
@@ -204,6 +303,7 @@ class Crawler:
                 except Exception as e:
                     logger.error(f"Error extracting content from PDF {url}: {str(e)}")
                     content = f"Failed to extract content from PDF at {url}: {str(e)}"
+                    toc_info = None
                 
                 source_type = "PDF"
             
@@ -211,6 +311,7 @@ class Crawler:
                 title = url.split('/')[-1]
                 content = f"Content from {url} - format {content_type}"
                 source_type = content_type.split('/')[-1].upper()
+                toc_info = None
             
             title_str = str(title) if title is not None else url
             
@@ -219,7 +320,8 @@ class Crawler:
                 source_type=source_type,
                 url=url,
                 title=title_str,
-                target=target
+                target=target,
+                toc_info=toc_info
             )
             
         except Exception as e:
