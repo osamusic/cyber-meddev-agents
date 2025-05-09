@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session as SQLAlchemySession
 from datetime import timedelta
 import os
+import logging
 from typing import Optional
 
 from .auth import (
@@ -16,6 +17,8 @@ from .models import Token, UserCreate, User
 from ..db.database import get_db
 from ..db.models import User as UserModel
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["認証"])  # Authentication
 
 @router.post("/token", response_model=Token)
@@ -25,13 +28,17 @@ async def login_for_access_token(
     request: Request = None,
     response: Response = None
 ):
+    logger.info(f"ログイン試行: ユーザー名 '{form_data.username}'")
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
+        logger.error(f"認証失敗: ユーザー名 '{form_data.username}' が見つからないか、パスワードが一致しません")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="ユーザー名またはパスワードが正しくありません",  # Incorrect username or password
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    logger.info(f"ユーザー '{form_data.username}' がログインしました")
     
     if request and response:
         regenerate_session_after_login(request, response, user)
