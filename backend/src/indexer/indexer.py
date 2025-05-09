@@ -30,6 +30,9 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     logger.warning("OPENAI_API_KEY environment variable not set")
 
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+
 original_client_init = httpx.Client.__init__
 
 def patched_client_init(self, *args, **kwargs):
@@ -107,7 +110,7 @@ class DocumentIndexer:
     def _create_empty_index(self) -> VectorStoreIndex:
         """Create a new empty index"""
         embed_model = CustomOpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
+        llm = OpenAI(temperature=0, model=OPENAI_MODEL)
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,
@@ -133,7 +136,7 @@ class DocumentIndexer:
             config = IndexConfig()
         
         embed_model = CustomOpenAIEmbedding()
-        llm = OpenAI(temperature=0, model="gpt-3.5-turbo")
+        llm = OpenAI(temperature=0, model=OPENAI_MODEL)
         service_context = ServiceContext.from_defaults(
             llm=llm,
             embed_model=embed_model,

@@ -4,6 +4,7 @@ services:
       context: ./backend
       args:
         - OPENAI_API_KEY=${API_KEY_OPENAI_API_KEY}
+        - OPENAI_MODEL=gpt-3.5-turbo
     ports:
       - "8000:8000"
     volumes:
