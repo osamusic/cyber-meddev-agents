@@ -14,6 +14,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     documents = relationship("DocumentModel", back_populates="owner")
+    classifications = relationship("ClassificationResult", back_populates="user")
 
 class DocumentModel(Base):
     __tablename__ = "documents"
@@ -30,6 +31,7 @@ class DocumentModel(Base):
     
     owner = relationship("User", back_populates="documents")
     sections = relationship("DocumentSection", back_populates="document")
+    classifications = relationship("ClassificationResult", back_populates="document")
 
 class DocumentSection(Base):
     __tablename__ = "document_sections"
@@ -66,3 +68,15 @@ class GuidelineKeyword(Base):
     guideline_id = Column(Integer, ForeignKey("guidelines.id"))
     
     guideline = relationship("Guideline", back_populates="keywords")
+
+class ClassificationResult(Base):
+    __tablename__ = "classification_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    result_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    document = relationship("DocumentModel", back_populates="classifications")
+    user = relationship("User", back_populates="classifications")
