@@ -2,6 +2,7 @@ import requests
 import hashlib
 import mimetypes
 import os
+import re  # 追加: 正規表現モジュール
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
@@ -97,7 +98,7 @@ class Crawler:
         max_size = self.max_document_size
         if target and target.max_document_size:
             max_size = target.max_document_size
-        logger.info(f"Splitting document from {url} with max size {max_size}")
+        logger.info(f"Splitting document from {url} with max size {max_size}, content length: {len(content)} characters")
         
         if len(content) <= max_size:
             doc_id = hashlib.sha256(url.encode()).hexdigest()
@@ -115,9 +116,11 @@ class Crawler:
         chunks = []
         
         if source_type == "PDF":
-            page_breaks = content.split("\f")
-            current_chunk = ""
+            import re
+            page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
+            page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
             
+            current_chunk = ""
             for page in page_breaks:
                 if len(current_chunk) + len(page) > max_size and current_chunk:
                     chunks.append(current_chunk)
@@ -162,7 +165,7 @@ class Crawler:
                 lang="en"
             ))
         
-        logger.info(f"Document from {url} split into {len(docs)} parts")
+        logger.info(f"Document from {url} split into {len(docs)} parts with average part size: {sum(len(d.content) for d in docs) // max(1, len(docs))} characters")
         return docs
         
     def _process_document(self, url: str, response, content_type: str, target: CrawlTarget) -> List[Document]:
@@ -185,7 +188,8 @@ class Crawler:
                     content = ""
                     for page_num in range(len(pdf_document)):
                         page = pdf_document[page_num]
-                        content += page.get_text()
+                        page_text = page.get_text()
+                        content += f"[PAGE_{page_num}]\n{page_text}\n[/PAGE_{page_num}]\n"
                     
                     metadata = pdf_document.metadata
                     if metadata.get('title') and metadata.get('title').strip():
