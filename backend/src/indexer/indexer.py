@@ -28,7 +28,7 @@ load_dotenv()
 if os.getenv("OPENROUTER_API_KEY"):
     openai.api_type = "openrouter"
     openai.api_key = os.getenv("OPENROUTER_API_KEY")
-    MODEL = "deepseek/deepseek-chat-v3-0324:free"
+    MODEL = "deepseek/deepseek-r1:free"
     logger.info(f"Using OpenRouter model: {MODEL}")
     Settings.llm = OpenRouter(model=MODEL)
 else:

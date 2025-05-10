@@ -20,7 +20,7 @@ if os.getenv("OPENROUTER_API_KEY"):
     openai.api_type = "openrouter"
     openai.api_key = os.getenv("OPENROUTER_API_KEY")
     API_URL = "https://openrouter.ai/api/v1"
-    MODEL = "deepseek/deepseek-chat-v3-0324:free"
+    MODEL = "deepseek/deepseek-r1:free"
     logger.info(f"Using OpenRouter model: {MODEL}")
 else:
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -105,7 +105,7 @@ class DocumentClassifier:
         """NISTサイバーセキュリティフレームワークに基づいて分類"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストを分析し、NISTサイバーセキュリティフレームワークのカテゴリに分類してください。
+        以下のテキストを分析し、NISTサイバーセキュリティフレームワークのカテゴリに日本語で分類してください。
 
         NISTカテゴリ:
         - ID: Identify（特定）- 資産管理、ビジネス環境、ガバナンス、リスク評価、リスク管理戦略
@@ -201,24 +201,25 @@ class DocumentClassifier:
         """IEC 62443に基づいて分類"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストを分析し、IEC 62443の基本要件（Foundational Requirements）に分類してください。
+        以下のテキストを分析し、IEC 62443の基本要件（Foundational Requirements）に日本語で分類してください。
 
-        IEC 62443の基本要件:
-        - FR1: Identification and authentication control（識別と認証制御）
-        - FR2: Use control（使用制御）
-        - FR3: System integrity（システム完全性）
-        - FR4: Data confidentiality（データ機密性）
-        - FR5: Restricted data flow（制限されたデータフロー）
-        - FR6: Timely response to events（イベントへのタイムリーな対応）
-        - FR7: Resource availability（リソース可用性）
+        IEC 62443の基本要件（Foundational Requirements）:
+        - FR1: Identification and authentication control (識別と認証制御) - ユーザー／デバイスの識別、認証、なりすまし防止
+        - FR2: Use control (使用制御) - 最小権限、アクセス制御、操作制限
+        - FR3: System integrity (システム完全性) - 改ざん防止、ソフトウェア整合性、マルウェア対策
+        - FR4: Data confidentiality（データ機密性） - データ暗号化、アクセス制御、情報漏洩対策
+        - FR5: Restricted data flow（制限されたデータフロー） - 通信経路の制限、ファイアーウォール、ネットワーク分離
+        - FR6: Timely response to events（イベントへのタイムリーな対応） - インシデント検知、ログ監視、インシデント対応
+        - FR7: Resource availability（リソース可用性） - サービス継続性、DoS対策、バックアップ
 
         テキスト:
         {document_text[:max_document_size]}
 
-        各基本要件の関連度を0から10の数値で評価し、最も関連性の高い要件を特定してください。
+        各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
 
-        以下のJSON形式で回答してください。有効なJSONのみを返してください。特に余分なテキスト、説明、コンマの使用に注意してください:
+        以下のJSON形式で回答してください。有効なJSONのみを返してください。
+        特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
             "requirements": {{
                 "FR1": {{
@@ -323,7 +324,8 @@ class DocumentClassifier:
 
         各キーワードについて、重要度（1-10）と簡単な説明を付けてください。
 
-        以下のJSON形式で回答してください:
+        以下のJSON形式で回答してください。有効なJSONのみを返してください。
+        特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
             "keywords": [
                 {{
@@ -355,21 +357,21 @@ class DocumentClassifier:
             return [{"keyword": "エラー", "importance": 0, "description": f"キーワード抽出中にエラーが発生しました: {str(e)}"}]
 
     def _summarize_document(self, document_text: str) -> str:
-        """ドキュメントの要約"""
+        """セキュリティ要件の抽出"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストを医療機器のサイバーセキュリティの観点から要約してください。
+        以下のテキストには、セキュリティ対策に関する「推奨事項」および「必須要件（義務）」が含まれています。  
+        この中から、セキュリティ上の**要求事項（セキュリティ対策）**を読み取り、以下の形式でリストアップしてください。
+        - 「必須」か「推奨」かを明記してください
+        - 原文の要点を簡潔にまとめてください（引用ではなく、整理された要求文として）
 
         テキスト:
         {document_text[:max_document_size]}
 
-        以下の点に注目して要約してください:
-        - 主要なセキュリティ対策や推奨事項
-        - 重要なリスクや脅威
-        - 規制やコンプライアンスに関する情報
-        - 実装に関する具体的なガイダンス
-
-        400字程度で簡潔に要約してください。
+        ## 出力形式（例）:
+        1. 【必須】ユーザー認証には多要素認証を用いること  
+        2. 【推奨】外部インターフェースにはファイアウォールを設置すること  
+        3. 【必須】ログは改ざん検知が可能な形式で保存すること
         """
 
         try:
@@ -384,7 +386,7 @@ class DocumentClassifier:
                 ],
                 temperature=0.1,
                 response_format={"type": "json_object"},
-                max_tokens=500
+                max_tokens=2000
             )
 
             return response.choices[0].message.content.strip()
