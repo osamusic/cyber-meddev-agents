@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import axiosClient from '../../api/axiosClient';
 
 const CrawlerForm = ({ onCrawlComplete }) => {
@@ -32,7 +33,7 @@ const CrawlerForm = ({ onCrawlComplete }) => {
       setIsSubmitting(true);
       setStatusMessage('クローラーを実行中...');
       
-      const response = await axiosClient.post('/crawler/run', {
+      await axiosClient.post('/crawler/run', {
         url,
         depth: parseInt(depth),
         mime_filters: mimeTypes,
@@ -178,6 +179,10 @@ const CrawlerForm = ({ onCrawlComplete }) => {
       </form>
     </div>
   );
+};
+
+CrawlerForm.propTypes = {
+  onCrawlComplete: PropTypes.func
 };
 
 export default CrawlerForm;
