@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import json
 from typing import List, Dict, Any
@@ -35,6 +36,8 @@ client = OpenAI(
     api_key=openai.api_key,
     base_url=API_URL,
 )
+
+max_document_size = os.getenv("MAX_DOCUMENT_SIZE", 4000)
 
 
 class DocumentClassifier:
@@ -112,7 +115,7 @@ class DocumentClassifier:
         - RC: Recover（復旧）- 復旧計画、改善、コミュニケーション
 
         テキスト:
-        {document_text[:4000]}
+        {document_text[:max_document_size]}
 
         各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
@@ -159,7 +162,10 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            result = json.loads(response.choices[0].message.content)
+            raw = response.choices[0].message.content
+            match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
+            json_text = match.group(1) if match else raw
+            result = json.loads(json_text)
             return result
         except json.JSONDecodeError as e:
             logger.error(f"NIST分類JSON解析エラー: {str(e)}")
@@ -207,7 +213,7 @@ class DocumentClassifier:
         - FR7: Resource availability（リソース可用性）
 
         テキスト:
-        {document_text[:4000]}
+        {document_text[:max_document_size]}
 
         各基本要件の関連度を0から10の数値で評価し、最も関連性の高い要件を特定してください。
         また、その判断理由を簡潔に説明してください。
@@ -262,7 +268,10 @@ class DocumentClassifier:
                 response_format={"type": "json_object"}
             )
 
-            result = json.loads(response.choices[0].message.content)
+            raw = response.choices[0].message.content
+            match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
+            json_text = match.group(1) if match else raw
+            result = json.loads(json_text)
             return result
         except json.JSONDecodeError as e:
             logger.error(f"IEC分類JSON解析エラー: {str(e)}")
@@ -303,7 +312,7 @@ class DocumentClassifier:
         以下のテキストから医療機器のサイバーセキュリティに関連する重要なキーワードを抽出してください。
 
         テキスト:
-        {document_text[:4000]}
+        {document_text[:max_document_size]}
 
 
         以下の条件を満たすキーワードを抽出してください:
@@ -337,8 +346,10 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-
-            result = json.loads(response.choices[0].message.content)
+            raw = response.choices[0].message.content
+            match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
+            json_text = match.group(1) if match else raw
+            result = json.loads(json_text)
             return result.get("keywords", [])
         except Exception as e:
             logger.error(f"キーワード抽出エラー: {str(e)}")
@@ -351,7 +362,7 @@ class DocumentClassifier:
         以下のテキストを医療機器のサイバーセキュリティの観点から要約してください。
 
         テキスト:
-        {document_text[:4000]}
+        {document_text[:max_document_size]}
 
         以下の点に注目して要約してください:
         - 主要なセキュリティ対策や推奨事項
