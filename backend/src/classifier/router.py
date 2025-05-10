@@ -45,13 +45,29 @@ async def classify_documents(
     logger.info(f"AUDIT LOG: {log_entry}")
 
     documents = []
+    already_classified_docs = []
 
     if classification_request.all_documents:
-        documents = db.query(DBDocument).all()
+        classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
+        documents = db.query(DBDocument).filter(
+            ~DBDocument.id.in_(db.query(classified_doc_ids.c.document_id))
+        ).all()
     elif classification_request.document_ids:
-        documents = db.query(DBDocument).filter(DBDocument.id.in_(classification_request.document_ids)).all()
+        for doc_id in classification_request.document_ids:
+            doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
+            if not doc:
+                continue
+                
+            existing_classification = db.query(DBClassificationResult).filter(
+                DBClassificationResult.document_id == doc_id
+            ).first()
+            
+            if existing_classification:
+                already_classified_docs.append(doc.title or f"Document {doc_id}")
+            else:
+                documents.append(doc)
     elif classification_request.section_ids:
-        documents = db.query(DBDocument).filter(DBDocument.section_id.in_(classification_request.section_ids)).all()
+        documents = db.query(DBDocument).filter(DBDocument.id.in_(classification_request.section_ids)).all()
 
     if not documents:
         raise HTTPException(
@@ -67,10 +83,16 @@ async def classify_documents(
         db=db
     )
 
+    message = None
+    if already_classified_docs:
+        message = f"次のドキュメントは既に分類されているためスキップされました: {', '.join(already_classified_docs)}"
+    
     return ClassificationResult(
         processed_count=len(documents),
         categories_count={},
-        frameworks=["NIST_CSF", "IEC_62443"]
+        frameworks=["NIST_CSF", "IEC_62443"],
+        skipped_documents=already_classified_docs,
+        message=message
     )
 
 

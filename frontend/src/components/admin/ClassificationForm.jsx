@@ -9,6 +9,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [classifyAll, setClassifyAll] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
   
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -40,6 +41,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       const response = await axiosClient.post('/classifier/classify', requestData);
       
       setSuccess(true);
+      setSuccessMessage(response.data.message);
       if (onClassifyComplete) {
         onClassifyComplete(response.data);
       }
@@ -73,6 +75,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       {success && (
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
           分類処理が開始されました。結果は数分後に反映されます。
+          {successMessage && <p className="mt-2">{successMessage}</p>}
         </div>
       )}
       
@@ -97,14 +100,16 @@ const ClassificationForm = ({ onClassifyComplete }) => {
                 <p className="text-gray-500">ドキュメントがありません</p>
               ) : (
                 documents.map(doc => (
-                  <label key={doc.id} className="flex items-center mb-2">
+                  <label key={doc.id} className={`flex items-center mb-2 ${doc.is_classified ? 'text-gray-400' : ''}`}>
                     <input
                       type="checkbox"
                       onChange={(e) => handleDocumentSelect(e, doc.id)}
                       checked={selectedDocuments.includes(doc.id)}
+                      disabled={doc.is_classified}
                       className="mr-2"
                     />
                     <span>{doc.title || doc.url}</span>
+                    {doc.is_classified && <span className="ml-2 text-sm text-gray-500">（分類済み）</span>}
                   </label>
                 ))
               )}
