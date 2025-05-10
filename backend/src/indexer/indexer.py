@@ -78,15 +78,7 @@ class DocumentIndexer:
         if not self.api_key:
             logger.warning("OPENAI_API_KEY environment variable is not set. Some functionality may be limited.")
         openai.api_key = self.api_key
-
         self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        if self.model == "gpt-4o-mini":
-            logger.info(f"Using cost-effective model: {self.model}")
-        elif "gpt-4" in self.model:
-            logger.warning(f"Using potentially expensive model: {self.model}. Consider using gpt-4o-mini for cost savings.")
-        else:
-            logger.info(f"Using model: {self.model}")
-
         self.index = self._load_or_create_index()
 
     def _load_or_create_index(self) -> VectorStoreIndex:
@@ -109,7 +101,7 @@ class DocumentIndexer:
         try:
             logger.info("Creating empty vector store index...")
             os.makedirs(self.index_dir, exist_ok=True)
-            storage_context = StorageContext.from_defaults(persist_dir=self.index_dir)
+            storage_context = StorageContext.from_defaults()
             index = VectorStoreIndex.from_documents([], storage_context=storage_context)
             index.storage_context.persist(persist_dir=self.index_dir)
             logger.info("Empty index created successfully")
