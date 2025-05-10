@@ -328,10 +328,9 @@ class DocumentClassifier:
             "keywords": [
                 {{
                     "keyword": "キーワード1",
-                    "importance": 1-10,
+                    "importance": 1,
                     "description": "説明"
-                }},
-                ...
+                }}
             ]
         }}
         """
