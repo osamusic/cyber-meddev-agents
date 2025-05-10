@@ -18,6 +18,7 @@ router = APIRouter(
     dependencies=[Depends(get_current_active_user)]
 )
 
+
 def get_classification_data(guideline_id: int, db: SQLAlchemySession) -> Optional[Dict[str, Any]]:
     """Get classification data for a guideline"""
     try:
@@ -48,6 +49,7 @@ def get_classification_data(guideline_id: int, db: SQLAlchemySession) -> Optiona
     except Exception as e:
         logger.error(f"Error getting classification data for guideline {guideline_id}: {str(e)}")
         return None
+
 
 @router.get("/", response_model=List[Guideline])
 async def get_guidelines(
@@ -92,6 +94,7 @@ async def get_guidelines(
 
     return result
 
+
 @router.get("/categories")
 async def get_categories(db: SQLAlchemySession = Depends(get_db)):
     """Get all unique categories"""
@@ -100,6 +103,7 @@ async def get_categories(db: SQLAlchemySession = Depends(get_db)):
     result = [cat[0] for cat in categories if cat[0]]
     logger.info(f"取得したカテゴリー: {result}")
     return result
+
 
 @router.get("/standards")
 async def get_standards(db: SQLAlchemySession = Depends(get_db)):
@@ -110,6 +114,7 @@ async def get_standards(db: SQLAlchemySession = Depends(get_db)):
     logger.info(f"取得した標準規格: {result}")
     return result
 
+
 @router.get("/regions")
 async def get_regions(db: SQLAlchemySession = Depends(get_db)):
     """Get all unique regions"""
@@ -118,6 +123,7 @@ async def get_regions(db: SQLAlchemySession = Depends(get_db)):
     result = [reg[0] for reg in regions if reg[0]]
     logger.info(f"取得した地域: {result}")
     return result
+
 
 @router.post("/search", response_model=List[Guideline])
 async def search_guidelines(
@@ -159,6 +165,7 @@ async def search_guidelines(
         result.append(guideline_dict)
 
     return result
+
 
 @router.post("/", response_model=Guideline)
 async def create_guideline(
@@ -228,6 +235,7 @@ async def create_guideline(
         "region": db_guideline.region,
         "keywords": keywords
     }
+
 
 @router.put("/{guideline_id}", response_model=Guideline)
 async def update_guideline(

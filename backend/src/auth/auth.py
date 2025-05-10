@@ -25,14 +25,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
+
 
 def get_password_hash(password):
     return pwd_context.hash(password)
 
+
 def get_user(db: SQLAlchemySession, username: str):
     return db.query(UserModel).filter(UserModel.username == username).first()
+
 
 def authenticate_user(db: SQLAlchemySession, username: str, password: str):
     logger.debug(f"認証試行: ユーザー名 '{username}'")
@@ -40,15 +44,16 @@ def authenticate_user(db: SQLAlchemySession, username: str, password: str):
     if not user:
         logger.debug(f"ユーザー '{username}' が見つかりません")
         return False
-    
+
     logger.debug(f"パスワード検証: 入力されたパスワードの長さ {len(password)}")
-    
+
     if not verify_password(password, user.hashed_password):
         logger.debug(f"ユーザー '{username}' のパスワードが一致しません")
         return False
-    
+
     logger.debug(f"ユーザー '{username}' の認証に成功しました")
     return user
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -59,6 +64,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: SQLAlchemySession = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -74,17 +80,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: SQLAlchemySe
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    
+
     if token_data.username is None:
         raise credentials_exception
-        
+
     user = get_user(db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
 
+
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
     return current_user
+
 
 async def get_admin_user(current_user: User = Depends(get_current_user)):
     if not current_user.is_admin:
@@ -94,15 +102,17 @@ async def get_admin_user(current_user: User = Depends(get_current_user)):
         )
     return current_user
 
+
 async def get_current_admin_user(current_user: User = Depends(get_current_user)):
     return await get_admin_user(current_user)
+
 
 def regenerate_session_after_login(request: Request, response: Response, user: UserModel):
     """
     Regenerate session after successful login to prevent session fixation attacks.
     This should be called after successful authentication.
     """
-    
+
     response.set_cookie(
         key="session_regenerated",
         value="true",
@@ -110,6 +120,6 @@ def regenerate_session_after_login(request: Request, response: Response, user: U
         secure=True,
         samesite="lax"
     )
-    
+
     client_host = request.client.host if request.client else "unknown"
     print(f"Session regenerated for user {user.username} from IP {client_host} at {datetime.utcnow()}")

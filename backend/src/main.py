@@ -1,18 +1,18 @@
+from .classifier.router import router as classifier_router
+from .crawler.router import router as crawler_router
+from .indexer.router import router as indexer_router
+from .admin.router import router as admin_router
+from .guidelines.router import router as guidelines_router
+from .auth.auth import get_current_active_user
+from .auth.router import router as auth_router
+from .db.models import Base
+from .db.database import engine
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from .db.database import engine
-from .db.models import Base
-from .auth.router import router as auth_router
-from .auth.auth import get_current_active_user
-from .guidelines.router import router as guidelines_router
-from .admin.router import router as admin_router
-from .indexer.router import router as indexer_router
-from .crawler.router import router as crawler_router
-from .classifier.router import router as classifier_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -33,9 +33,11 @@ app.include_router(indexer_router)
 app.include_router(crawler_router)
 app.include_router(classifier_router)
 
+
 @app.get("/")
 def read_root():
     return {"message": "Cyber-Med-Agent Backend is running"}
+
 
 @app.get("/me")
 async def read_users_me(current_user=Depends(get_current_active_user)):

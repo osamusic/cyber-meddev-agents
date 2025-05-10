@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
 
+
 class CrawlTarget(BaseModel):
     """Target URL for crawling with configuration"""
     url: str
@@ -10,7 +11,8 @@ class CrawlTarget(BaseModel):
     name: Optional[str] = None
     update_existing: bool = True  # 既存のドキュメントを更新するかスキップするか
     max_document_size: Optional[int] = None  # ドキュメント分割の最大サイズ（文字数）
-    
+
+
 class Document(BaseModel):
     """Document extracted from crawling"""
     doc_id: str

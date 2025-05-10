@@ -97,7 +97,6 @@ class DocumentIndexer:
 
     def _create_empty_index(self) -> VectorStoreIndex:
         """Create a new empty index"""
-        fallback_index = None
         try:
             logger.info("Creating empty vector store index...")
             os.makedirs(self.index_dir, exist_ok=True)

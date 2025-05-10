@@ -18,6 +18,7 @@ router = APIRouter(
     dependencies=[Depends(get_admin_user)]  # 管理者のみがアクセス可能
 )
 
+
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)
 async def run_crawler(
     target: CrawlTarget,
@@ -50,6 +51,7 @@ async def run_crawler(
         "target": target.dict(),
         "status": "processing"
     }
+
 
 @router.get("/status", response_model=List[Document])
 async def get_crawler_status(

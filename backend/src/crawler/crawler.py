@@ -1,10 +1,8 @@
 import requests
 import hashlib
-import mimetypes
 import os
-import re  # 追加: 正規表現モジュール
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
 import logging
 import fitz  # PyMuPDF
@@ -13,9 +11,10 @@ from .models import CrawlTarget, Document
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class Crawler:
     """Crawler for medical device cybersecurity documents"""
-    
+
     def __init__(self, db=None, target=None):
         self.session = requests.Session()
         self.session.headers.update({
@@ -23,59 +22,59 @@ class Crawler:
         })
         self.visited_urls = set()
         self.db = db  # データベースセッション
-        
+
         self.max_document_size = int(os.getenv("MAX_DOCUMENT_SIZE", "4000"))
         if target and target.max_document_size:
             self.max_document_size = target.max_document_size
-        
+
     def crawl(self, target: CrawlTarget) -> List[Document]:
         """Crawl a target URL and return extracted documents"""
         logger.info(f"Starting crawl for {target.url}")
         documents = []
-        
+
         try:
             self._crawl_url(target.url, target, documents, depth=0)
         except Exception as e:
             logger.error(f"Error crawling {target.url}: {str(e)}")
-        
+
         logger.info(f"Crawl completed. Found {len(documents)} documents")
         return documents
-    
+
     def _crawl_url(self, url: str, target: CrawlTarget, documents: List[Document], depth: int) -> None:
         """Recursively crawl URLs up to specified depth"""
         if depth > target.depth or url in self.visited_urls:
             return
-        
+
         self.visited_urls.add(url)
         logger.info(f"Crawling {url} (depth {depth})")
-        
+
         doc_id = hashlib.sha256(url.encode()).hexdigest()
-        
+
         if self.db is not None:
             from ..db.models import DocumentModel
             existing_doc = self.db.query(DocumentModel).filter(
                 DocumentModel.doc_id == doc_id
             ).first()
-            
+
             if existing_doc and not target.update_existing:
                 logger.info(f"Skipping existing document: {url}")
                 return
-        
+
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
-            
+
             content_type = response.headers.get('Content-Type', '').split(';')[0]
-            
+
             if content_type in target.mime_filters:
                 result_docs = self._process_document(url, response, content_type, target)
                 if result_docs:
                     documents.extend(result_docs)
-            
+
             if content_type == 'text/html' and depth < target.depth:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 links = soup.find_all('a', href=True)
-                
+
                 for link in links:
                     href = link['href']
                     if href.startswith('/'):
@@ -87,19 +86,19 @@ class Crawler:
                             href = url + href
                         else:
                             href = url + '/' + href
-                    
+
                     self._crawl_url(href, target, documents, depth + 1)
-                    
+
         except Exception as e:
             logger.error(f"Error processing {url}: {str(e)}")
-    
+
     def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None, toc_info: Optional[List[Dict]] = None) -> List[Document]:
         """大きなドキュメントを適切なサイズに分割する"""
         max_size = self.max_document_size
         if target and target.max_document_size:
             max_size = target.max_document_size
         logger.info(f"Splitting document from {url} with max size {max_size}, content length: {len(content)} characters")
-        
+
         if len(content) <= max_size:
             doc_id = hashlib.sha256(url.encode()).hexdigest()
             return [Document(
@@ -111,16 +110,16 @@ class Crawler:
                 downloaded_at=datetime.now(),
                 lang="en"
             )]
-        
+
         docs = []
         chunks = []
-        
+
         if source_type == "PDF" and toc_info and len(toc_info) > 0:
             logger.info(f"Attempting TOC-based splitting for {url} with {len(toc_info)} TOC entries")
-            
+
             chapters = []
             current_chapter = None
-            
+
             for entry in toc_info:
                 if entry["level"] == 1:
                     if current_chapter:
@@ -133,17 +132,17 @@ class Crawler:
                 elif current_chapter:
                     current_chapter["content"] += f"\n[SECTION: {entry['title']}]\n{entry['text']}"
                     current_chapter["page_nums"].add(entry["page_num"])
-            
+
             if current_chapter:
                 chapters.append(current_chapter)
-            
+
             if chapters:
                 logger.info(f"Found {len(chapters)} chapters for TOC-based splitting")
-                
+
                 for chapter in chapters:
                     chapter_content = chapter["content"]
                     chapter_title = chapter["title"]
-                    
+
                     if len(chapter_content) <= max_size:
                         chunks.append({
                             "title": chapter_title,
@@ -154,7 +153,7 @@ class Crawler:
                         current_chunk = ""
                         current_chunk_title = chapter_title
                         chunk_count = 1
-                        
+
                         for para in paragraphs:
                             if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
                                 chunks.append({
@@ -167,19 +166,19 @@ class Crawler:
                                 if current_chunk:
                                     current_chunk += "\n\n"
                                 current_chunk += para
-                        
+
                         if current_chunk:
                             chunks.append({
                                 "title": f"{current_chunk_title} (Part {chunk_count})",
                                 "content": current_chunk
                             })
-            
+
             if not chunks:
                 logger.warning(f"TOC-based splitting failed for {url}, falling back to page-based splitting")
                 import re
                 page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
                 page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
-                
+
                 current_chunk = ""
                 for page in page_breaks:
                     if len(current_chunk) + len(page) > max_size and current_chunk:
@@ -187,15 +186,15 @@ class Crawler:
                         current_chunk = page
                     else:
                         current_chunk += page
-                
+
                 if current_chunk:
                     chunks.append({"title": title, "content": current_chunk})
-            
+
         elif source_type == "PDF":
             import re
             page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
             page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
-            
+
             current_chunk = ""
             for page in page_breaks:
                 if len(current_chunk) + len(page) > max_size and current_chunk:
@@ -203,14 +202,14 @@ class Crawler:
                     current_chunk = page
                 else:
                     current_chunk += page
-            
+
             if current_chunk:
                 chunks.append({"title": title, "content": current_chunk})
-                
+
         elif source_type == "HTML":
             paragraphs = content.split("\n\n")
             current_chunk = ""
-            
+
             for para in paragraphs:
                 if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
                     chunks.append({"title": title, "content": current_chunk})
@@ -219,23 +218,23 @@ class Crawler:
                     if current_chunk:
                         current_chunk += "\n\n"
                     current_chunk += para
-            
+
             if current_chunk:
                 chunks.append({"title": title, "content": current_chunk})
-                
+
         else:
             for i in range(0, len(content), max_size):
-                chunks.append({"title": title, "content": content[i:i+max_size]})
-        
+                chunks.append({"title": title, "content": content[i:i + max_size]})
+
         for i, chunk in enumerate(chunks):
             chunk_content = chunk["content"]
             chunk_title = chunk["title"]
-            
+
             if chunk_title == title:
-                chunk_title = f"{title} (Part {i+1}/{len(chunks)})"
-            
+                chunk_title = f"{title} (Part {i + 1}/{len(chunks)})"
+
             chunk_id = hashlib.sha256(f"{url}_{i}".encode()).hexdigest()
-            
+
             docs.append(Document(
                 doc_id=chunk_id,
                 url=url,
@@ -245,28 +244,26 @@ class Crawler:
                 downloaded_at=datetime.now(),
                 lang="en"
             ))
-        
+
         logger.info(f"Document from {url} split into {len(docs)} parts with average part size: {sum(len(d.content) for d in docs) // max(1, len(docs))} characters")
         return docs
-        
+
     def _process_document(self, url: str, response, content_type: str, target: CrawlTarget) -> List[Document]:
         """Process a document based on its content type and split if necessary"""
         try:
-            doc_id = hashlib.sha256(url.encode()).hexdigest()
-            
             if content_type == 'text/html':
                 soup = BeautifulSoup(response.content, 'html.parser')
                 title = soup.title.string if soup.title else url
                 content = soup.get_text(separator='\n', strip=True)
                 source_type = "HTML"
                 toc_info = None
-            
+
             elif content_type == 'application/pdf':
                 title = url.split('/')[-1]
                 try:
                     pdf_data = response.content
                     pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
-                    
+
                     toc = pdf_document.get_toc()
                     toc_info = None
                     if toc:
@@ -281,7 +278,7 @@ class Crawler:
                                     "page_num": page_num,
                                     "text": page_text
                                 })
-                    
+
                     content = ""
                     page_contents = []
                     for page_num in range(len(pdf_document)):
@@ -289,32 +286,32 @@ class Crawler:
                         page_text = page.get_text()
                         page_contents.append(page_text)
                         content += f"[PAGE_{page_num}]\n{page_text}\n[/PAGE_{page_num}]\n"
-                    
+
                     metadata = pdf_document.metadata
                     if metadata.get('title') and metadata.get('title').strip():
                         title = metadata.get('title')
-                    
+
                     pdf_document.close()
-                    
+
                     if not content.strip():
                         content = f"PDF from {url} appears to contain no extractable text (may be scanned or image-based)"
                         logger.warning(f"Empty content extracted from PDF: {url}")
-                
+
                 except Exception as e:
                     logger.error(f"Error extracting content from PDF {url}: {str(e)}")
                     content = f"Failed to extract content from PDF at {url}: {str(e)}"
                     toc_info = None
-                
+
                 source_type = "PDF"
-            
+
             else:
                 title = url.split('/')[-1]
                 content = f"Content from {url} - format {content_type}"
                 source_type = content_type.split('/')[-1].upper()
                 toc_info = None
-            
+
             title_str = str(title) if title is not None else url
-            
+
             return self._split_document(
                 content=content,
                 source_type=source_type,
@@ -323,7 +320,7 @@ class Crawler:
                 target=target,
                 toc_info=toc_info
             )
-            
+
         except Exception as e:
             logger.error(f"Error processing document {url}: {str(e)}")
             return []

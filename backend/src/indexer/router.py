@@ -16,8 +16,8 @@ router = APIRouter(
 
 indexer = DocumentIndexer(storage_dir="./storage")
 
-@router.post("/documents")
 
+@router.post("/documents")
 async def index_documents(
     config: IndexConfig = Body(None),
     db: SQLAlchemySession = Depends(get_db)
@@ -50,15 +50,15 @@ async def index_documents(
 
     return result
 
-@router.post("/search", response_model=List[Dict[str, Any]])
 
+@router.post("/search", response_model=List[Dict[str, Any]])
 async def search_index(query: SearchQuery):
     """Search the index for documents matching the query"""
     results = indexer.search(query.query, query.top_k)
     return results
 
-@router.get("/stats", response_model=IndexStats)
 
+@router.get("/stats", response_model=IndexStats)
 async def get_index_stats():
     """Get statistics about the index"""
     stats = indexer.get_stats()

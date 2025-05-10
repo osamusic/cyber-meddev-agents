@@ -15,9 +15,10 @@ sqlite_url = f"sqlite:///{db_path.as_posix()}"
 DATABASE_URL = os.getenv("DATABASE_URL", sqlite_url)
 
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 )
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

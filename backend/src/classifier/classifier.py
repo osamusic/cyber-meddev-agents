@@ -20,6 +20,7 @@ if not openai.api_key:
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
+
 class DocumentClassifier:
     """医療機器サイバーセキュリティドキュメント分類器"""
 
@@ -80,27 +81,26 @@ class DocumentClassifier:
         result["intermediate_results"] = intermediate_results
 
         return result
-    
 
     def _classify_nist(self, document_text: str) -> Dict[str, Any]:
         """NISTサイバーセキュリティフレームワークに基づいて分類"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
         以下のテキストを分析し、NISTサイバーセキュリティフレームワークのカテゴリに分類してください。
-        
+
         NISTカテゴリ:
         - ID: Identify（特定）- 資産管理、ビジネス環境、ガバナンス、リスク評価、リスク管理戦略
         - PR: Protect（防御）- アクセス制御、意識向上とトレーニング、データセキュリティ、情報保護プロセス、保守、保護技術
         - DE: Detect（検知）- 異常とイベント、継続的なセキュリティモニタリング、検出プロセス
         - RS: Respond（対応）- 対応計画、コミュニケーション、分析、緩和、改善
         - RC: Recover（復旧）- 復旧計画、改善、コミュニケーション
-        
+
         テキスト:
         {document_text[:4000]}
-        
+
         各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
-        
+
         以下のJSON形式で回答してください。有効なJSONのみを返してください。
         特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
@@ -143,7 +143,7 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            
+
             result = json.loads(response.choices[0].message.content)
             return result
         except json.JSONDecodeError as e:
@@ -175,14 +175,13 @@ class DocumentClassifier:
                 "primary_category": "エラー",
                 "explanation": f"分類処理中にエラーが発生しました: {str(e)}"
             }
-    
 
     def _classify_iec(self, document_text: str) -> Dict[str, Any]:
         """IEC 62443に基づいて分類"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
         以下のテキストを分析し、IEC 62443の基本要件（Foundational Requirements）に分類してください。
-        
+
         IEC 62443の基本要件:
         - FR1: Identification and authentication control（識別と認証制御）
         - FR2: Use control（使用制御）
@@ -191,13 +190,13 @@ class DocumentClassifier:
         - FR5: Restricted data flow（制限されたデータフロー）
         - FR6: Timely response to events（イベントへのタイムリーな対応）
         - FR7: Resource availability（リソース可用性）
-        
+
         テキスト:
         {document_text[:4000]}
-        
+
         各基本要件の関連度を0から10の数値で評価し、最も関連性の高い要件を特定してください。
         また、その判断理由を簡潔に説明してください。
-        
+
         以下のJSON形式で回答してください。有効なJSONのみを返してください。特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
             "requirements": {{
@@ -233,7 +232,7 @@ class DocumentClassifier:
             "primary_requirement": "最も関連性の高い要件コード",
             "explanation": "全体的な分析と判断理由の要約"
         }}
-        
+
         必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
 
@@ -247,7 +246,7 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            
+
             result = json.loads(response.choices[0].message.content)
             return result
         except json.JSONDecodeError as e:
@@ -281,25 +280,25 @@ class DocumentClassifier:
                 "primary_requirement": "エラー",
                 "explanation": f"分類処理中にエラーが発生しました: {str(e)}"
             }
-    
 
     def _extract_keywords(self, document_text: str, config: KeywordExtractionConfig) -> List[Dict[str, Any]]:
         """セキュリティキーワードの抽出"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
         以下のテキストから医療機器のサイバーセキュリティに関連する重要なキーワードを抽出してください。
-        
+
         テキスト:
         {document_text[:4000]}
-        
+
+
         以下の条件を満たすキーワードを抽出してください:
         - 医療機器のサイバーセキュリティに関連していること
         - 重要度が高いこと
         - 最低{config.min_keyword_length}文字以上であること
         - 最大{config.max_keywords}個まで
-        
+
         各キーワードについて、重要度（1-10）と簡単な説明を付けてください。
-        
+
         以下のJSON形式で回答してください:
         {{
             "keywords": [
@@ -323,13 +322,12 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            
+
             result = json.loads(response.choices[0].message.content)
             return result.get("keywords", [])
         except Exception as e:
             logger.error(f"キーワード抽出エラー: {str(e)}")
             return [{"keyword": "エラー", "importance": 0, "description": f"キーワード抽出中にエラーが発生しました: {str(e)}"}]
-    
 
     def _summarize_document(self, document_text: str) -> str:
         """ドキュメントの要約"""
@@ -354,7 +352,7 @@ class DocumentClassifier:
                 model=self.openai_model,
                 messages=[
                     {
-                        "role": "system", 
+                        "role": "system",
                         "content": "あなたは医療機器サイバーセキュリティの専門家です。"
                     },
                     {"role": "user", "content": prompt}
