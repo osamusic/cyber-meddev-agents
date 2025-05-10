@@ -207,19 +207,19 @@ const AdminDashboard = () => {
 
       {showCrawlerForm && (
         <CrawlerForm 
-          onCrawlComplete={(data) => {
+          onCrawlComplete={() => {
             fetchStats();
             setShowCrawlerForm(false);
-          }} 
+          }}
         />
       )}
       
       {showClassificationForm && (
         <ClassificationForm 
-          onClassifyComplete={(data) => {
+          onClassifyComplete={() => {
             fetchStats();
             setShowClassificationForm(false);
-          }} 
+          }}
         />
       )}
     </div>

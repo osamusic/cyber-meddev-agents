@@ -1,13 +1,11 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session as SQLAlchemySession
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from .db.database import engine, get_db
-from .db.models import Base, User, DocumentModel, DocumentSection, Guideline, GuidelineKeyword
+from .db.database import engine
+from .db.models import Base
 from .auth.router import router as auth_router
 from .auth.auth import get_current_active_user
 from .guidelines.router import router as guidelines_router
@@ -40,5 +38,5 @@ def read_root():
     return {"message": "Cyber-Med-Agent Backend is running"}
 
 @app.get("/me")
-async def read_users_me(current_user = Depends(get_current_active_user)):
+async def read_users_me(current_user=Depends(get_current_active_user)):
     return current_user

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import axiosClient from '../../api/axiosClient';
 
 const ClassificationForm = ({ onClassifyComplete }) => {
@@ -125,6 +126,10 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       </form>
     </div>
   );
+};
+
+ClassificationForm.propTypes = {
+  onClassifyComplete: PropTypes.func
 };
 
 export default ClassificationForm;

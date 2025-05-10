@@ -1,7 +1,7 @@
 import os
 import logging
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import openai
 from datetime import datetime
 from dotenv import load_dotenv
@@ -22,12 +22,12 @@ logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
 class DocumentClassifier:
     """医療機器サイバーセキュリティドキュメント分類器"""
-    
+
     def __init__(self):
         """分類器の初期化"""
         self.openai_model = OPENAI_MODEL
         self.api_key = os.getenv("OPENAI_API_KEY")
-        
+
         self.nist_categories = {
             "ID": "Identify（特定）",
             "PR": "Protect（防御）",
@@ -35,7 +35,7 @@ class DocumentClassifier:
             "RS": "Respond（対応）",
             "RC": "Recover（復旧）"
         }
-        
+
         self.iec_categories = {
             "FR1": "Identification and authentication control（識別と認証制御）",
             "FR2": "Use control（使用制御）",
@@ -45,7 +45,7 @@ class DocumentClassifier:
             "FR6": "Timely response to events（イベントへのタイムリーな対応）",
             "FR7": "Resource availability（リソース可用性）"
         }
-    
+
     def classify_document(self, document_text: str, config: ClassificationConfig) -> Dict[str, Any]:
         """ドキュメントをNISTとIECフレームワークに基づいて分類"""
         frameworks = config.frameworks
@@ -56,9 +56,9 @@ class DocumentClassifier:
             "summary": "",
             "intermediate_results": {}  # 中間結果を保存するための新しいフィールド
         }
-        
+
         intermediate_results = {}
-        
+
         for framework in frameworks:
             if framework == "NIST_CSF":
                 nist_result = self._classify_nist(document_text)
@@ -68,19 +68,20 @@ class DocumentClassifier:
                 iec_result = self._classify_iec(document_text)
                 result["frameworks"]["IEC_62443"] = iec_result
                 intermediate_results["IEC_62443_raw"] = iec_result  # 中間結果を保存
-        
+
         keywords = self._extract_keywords(document_text, config.keyword_config)
         result["keywords"] = keywords
         intermediate_results["keywords_raw"] = keywords  # 中間結果を保存
-        
+
         summary = self._summarize_document(document_text)
         result["summary"] = summary
         intermediate_results["summary_raw"] = summary  # 中間結果を保存
-        
+
         result["intermediate_results"] = intermediate_results
-        
+
         return result
     
+
     def _classify_nist(self, document_text: str) -> Dict[str, Any]:
         """NISTサイバーセキュリティフレームワークに基づいて分類"""
         prompt = f"""
@@ -100,7 +101,8 @@ class DocumentClassifier:
         各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
         
-        以下のJSON形式で回答してください。有効なJSONのみを返してください。特に余分なテキスト、説明、コンマの使用に注意してください:
+        以下のJSON形式で回答してください。有効なJSONのみを返してください。
+        特に余分なテキスト、説明、コンマの使用に注意してください:
         {{
             "categories": {{
                 "ID": {{
@@ -127,10 +129,10 @@ class DocumentClassifier:
             "primary_category": "最も関連性の高いカテゴリコード",
             "explanation": "全体的な分析と判断理由の要約"
         }}
-        
+
         必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
-        
+
         try:
             response = openai.chat.completions.create(
                 model=self.openai_model,
@@ -146,7 +148,9 @@ class DocumentClassifier:
             return result
         except json.JSONDecodeError as e:
             logger.error(f"NIST分類JSON解析エラー: {str(e)}")
-            logger.error(f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}")
+            logger.error(
+                f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}"
+            )
             return {
                 "categories": {
                     "ID": {"score": 0, "reason": "JSON解析エラー"},
@@ -172,6 +176,7 @@ class DocumentClassifier:
                 "explanation": f"分類処理中にエラーが発生しました: {str(e)}"
             }
     
+
     def _classify_iec(self, document_text: str) -> Dict[str, Any]:
         """IEC 62443に基づいて分類"""
         prompt = f"""
@@ -231,7 +236,7 @@ class DocumentClassifier:
         
         必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
-        
+
         try:
             response = openai.chat.completions.create(
                 model=self.openai_model,
@@ -277,6 +282,7 @@ class DocumentClassifier:
                 "explanation": f"分類処理中にエラーが発生しました: {str(e)}"
             }
     
+
     def _extract_keywords(self, document_text: str, config: KeywordExtractionConfig) -> List[Dict[str, Any]]:
         """セキュリティキーワードの抽出"""
         prompt = f"""
@@ -306,7 +312,7 @@ class DocumentClassifier:
             ]
         }}
         """
-        
+
         try:
             response = openai.chat.completions.create(
                 model=self.openai_model,
@@ -324,35 +330,40 @@ class DocumentClassifier:
             logger.error(f"キーワード抽出エラー: {str(e)}")
             return [{"keyword": "エラー", "importance": 0, "description": f"キーワード抽出中にエラーが発生しました: {str(e)}"}]
     
+
     def _summarize_document(self, document_text: str) -> str:
         """ドキュメントの要約"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
         以下のテキストを医療機器のサイバーセキュリティの観点から要約してください。
-        
+
         テキスト:
         {document_text[:4000]}
-        
+
         以下の点に注目して要約してください:
         - 主要なセキュリティ対策や推奨事項
         - 重要なリスクや脅威
         - 規制やコンプライアンスに関する情報
         - 実装に関する具体的なガイダンス
-        
+
         400字程度で簡潔に要約してください。
         """
-        
+
         try:
             response = openai.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。"},
+                    {
+                        "role": "system", 
+                        "content": "あなたは医療機器サイバーセキュリティの専門家です。"
+                    },
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
+                response_format={"type": "json_object"},
                 max_tokens=500
             )
-            
+
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"要約エラー: {str(e)}")

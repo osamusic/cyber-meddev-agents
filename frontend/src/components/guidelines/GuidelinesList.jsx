@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
@@ -203,7 +204,6 @@ const GuidelinesList = () => {
       setGuidelines(guidelinesRes.data || []);
       
       setSelectedClassification(null);
-      setShowClassificationDetail(false);
       
       return response.data;
     } catch (err) {
@@ -243,7 +243,7 @@ const GuidelinesList = () => {
     }
   };
   
-  const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) => {
+const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) => {
     if (!classification) return null;
     
     return (
@@ -588,7 +588,7 @@ const GuidelinesList = () => {
                   {guideline.classification.summary && (
                     <div className="mt-2">
                       <p className="text-sm text-gray-600 italic line-clamp-2">
-                        "{guideline.classification.summary}"
+                        &quot;{guideline.classification.summary}&quot;
                       </p>
                     </div>
                   )}
@@ -630,5 +630,6 @@ const GuidelinesList = () => {
     </div>
   );
 };
+
 
 export default GuidelinesList;
