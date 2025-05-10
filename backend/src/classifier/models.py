@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 class ClassificationRequest(BaseModel):
@@ -26,6 +26,8 @@ class ClassificationResult(BaseModel):
     processed_count: int
     categories_count: Dict[str, Any]
     frameworks: List[str]
+    skipped_documents: List[str] = []
+    message: Optional[str] = None
 
     class Config:
         from_attributes = True

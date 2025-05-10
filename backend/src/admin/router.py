@@ -4,7 +4,7 @@ from typing import List
 from datetime import datetime
 
 from ..db.database import get_db
-from ..db.models import DocumentModel, User as UserModel
+from ..db.models import DocumentModel, User as UserModel, ClassificationResult as DBClassificationResult
 from ..auth.auth import get_admin_user
 from .models import DocumentInfo, DeleteConfirmation
 
@@ -22,8 +22,19 @@ async def get_all_documents(
     db: SQLAlchemySession = Depends(get_db)
 ):
     """Get all documents (admin only)"""
+    classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
+    
     documents = db.query(DocumentModel).offset(skip).limit(limit).all()
-    return documents
+    
+    result = []
+    for doc in documents:
+        doc_dict = vars(doc)
+        doc_dict["is_classified"] = db.query(classified_doc_ids.c.document_id).filter(
+            classified_doc_ids.c.document_id == doc.id
+        ).first() is not None
+        result.append(doc_dict)
+    
+    return result
 
 
 @router.delete("/documents/{doc_id}")
