@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
+
 class LogEntry(BaseModel):
     id: int
     action: str
@@ -9,9 +10,10 @@ class LogEntry(BaseModel):
     user_id: int
     details: Optional[str] = None
     ip_address: Optional[str] = None
-    
+
     class Config:
-        orm_mode = True
+        from_attributes = True
+
 
 class DocumentInfo(BaseModel):
     id: int
@@ -20,9 +22,10 @@ class DocumentInfo(BaseModel):
     source_type: str
     downloaded_at: datetime
     url: str
-    
+
     class Config:
-        orm_mode = True
+        from_attributes = True
+
 
 class DeleteConfirmation(BaseModel):
     confirmed: bool

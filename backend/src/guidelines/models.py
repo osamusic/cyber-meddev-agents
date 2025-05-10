@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+
 class GuidelineBase(BaseModel):
     category: str
     standard: str
@@ -8,17 +9,20 @@ class GuidelineBase(BaseModel):
     source_url: str
     region: str
 
+
 class GuidelineCreate(GuidelineBase):
     guideline_id: str
     keywords: List[str]
+
 
 class Guideline(GuidelineBase):
     id: int
     guideline_id: str
     keywords: List[str]
-    
+
     class Config:
-        orm_mode = True
+        from_attributes = True
+
 
 class GuidelineSearch(BaseModel):
     query: str

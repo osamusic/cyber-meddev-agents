@@ -3,21 +3,19 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from llama_index import (
-    VectorStoreIndex,
-    SimpleDirectoryReader,
-    Document,
-    ServiceContext,
-    StorageContext,
-    load_index_from_storage
-)
-from llama_index.node_parser import SimpleNodeParser
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.llms import OpenAI
 import openai
 from dotenv import load_dotenv
 import httpx
-import sys
+from llama_index.core import (
+    VectorStoreIndex,
+    Document,
+    Settings,
+    StorageContext,
+    load_index_from_storage,
+)
+from llama_index.llms.openai import OpenAI
+from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.core.node_parser import SimpleNodeParser
 
 from .models import IndexConfig, IndexStats
 
@@ -25,13 +23,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     logger.warning("OPENAI_API_KEY environment variable not set")
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+
+# グローバルな既定値を設定
+Settings.llm = OpenAI(model=OPENAI_MODEL)
+Settings.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
+Settings.node_parser = SimpleNodeParser(chunk_size=256, chunk_overlap=20)
+Settings.num_output = 512
+Settings.context_window = os.getenv("MAX_DOCUMENT_SIZE", 4000)
 
 original_client_init = httpx.Client.__init__
 
@@ -56,35 +60,6 @@ def patched_async_client_init(self, *args, **kwargs):
 
 
 httpx.AsyncClient.__init__ = patched_async_client_init
-
-
-class CustomOpenAIEmbedding:
-    """Custom embedding class that wraps OpenAI API to avoid compatibility issues"""
-
-    def __init__(self):
-        """Initialize with default parameters"""
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.model = "text-embedding-ada-002"
-
-    def get_text_embedding(self, text: str) -> List[float]:
-        """Get embedding for a single text"""
-        response = openai.embeddings.create(
-            model=self.model,
-            input=text
-        )
-        return response.data[0].embedding
-
-    def get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Get embeddings for multiple texts"""
-        response = openai.embeddings.create(
-            model=self.model,
-            input=texts
-        )
-        return [item.embedding for item in response.data]
-
-    def get_text_embedding_batch(self, texts: List[str], show_progress: bool = False) -> List[List[float]]:
-        """Get embeddings for multiple texts (batch processing)"""
-        return self.get_text_embeddings(texts)
 
 
 class DocumentIndexer:
@@ -120,7 +95,7 @@ class DocumentIndexer:
             if os.path.exists(os.path.join(self.index_dir, "docstore.json")):
                 logger.info("Loading existing index...")
                 storage_context = StorageContext.from_defaults(persist_dir=self.index_dir)
-                return load_index_from_storage(storage_context)
+                return load_index_from_storage(storage_context=storage_context)
             else:
                 logger.info("Creating new index...")
                 return self._create_empty_index()
@@ -132,136 +107,37 @@ class DocumentIndexer:
         """Create a new empty index"""
         fallback_index = None
         try:
-            if not openai.api_key:
-                logger.warning("OPENAI_API_KEY is not set. Attempting to create index with fallback options.")
-                raise ValueError("OPENAI_API_KEY is not set")
-
-            logger.info("Creating embedding model...")
-            embed_model = CustomOpenAIEmbedding()
-
-            logger.info(f"Creating LLM with model {OPENAI_MODEL}...")
-            llm = OpenAI(temperature=0, model=OPENAI_MODEL)
-
-            logger.info("Creating service context...")
-            service_context = ServiceContext.from_defaults(
-                llm=llm,
-                embed_model=embed_model,
-                node_parser=SimpleNodeParser.from_defaults(
-                    chunk_size=256,
-                    chunk_overlap=20
-                )
-            )
-
             logger.info("Creating empty vector store index...")
-            index = VectorStoreIndex([], service_context=service_context)
-
-            logger.info(f"Persisting index to {self.index_dir}...")
+            os.makedirs(self.index_dir, exist_ok=True)
+            storage_context = StorageContext.from_defaults(persist_dir=self.index_dir)
+            index = VectorStoreIndex.from_documents([], storage_context=storage_context)
             index.storage_context.persist(persist_dir=self.index_dir)
-
             logger.info("Empty index created successfully")
             return index
         except Exception as e:
             logger.error(f"Error creating empty index: {str(e)}")
-            logger.warning("Creating fallback empty index without OpenAI dependencies...")
-
-            try:
-                service_context = ServiceContext.from_defaults(
-                    llm=None,
-                    embed_model=None,
-                    node_parser=SimpleNodeParser.from_defaults(
-                        chunk_size=256,
-                        chunk_overlap=20
-                    )
-                )
-
-                fallback_index = VectorStoreIndex([], service_context=service_context)
-                logger.info("Fallback index created with standard imports")
-                return fallback_index
-            except Exception as fallback_error_1:
-                logger.error(f"First fallback failed: {str(fallback_error_1)}")
-
-                try:
-                    from llama_index import StorageContext, SimpleDocumentStore, SimpleVectorStore
-
-                    logger.info("Creating minimal storage context manually...")
-                    storage_context = StorageContext.from_defaults(
-                        docstore=SimpleDocumentStore(),
-                        vector_store=SimpleVectorStore()
-                    )
-
-                    fallback_index = VectorStoreIndex([], storage_context=storage_context)
-                    logger.info("Second fallback index created with minimal components")
-                    return fallback_index
-                except Exception as fallback_error_2:
-                    logger.error(f"Second fallback failed: {str(fallback_error_2)}")
-
-                    try:
-                        from llama_index import Document
-
-                        class MinimalIndex:
-                            def __init__(self):
-                                self.docstore = type('obj', (object,), {'docs': {}})
-                                self.storage_context = type('obj', (object,), {
-                                    'persist': lambda persist_dir: logger.info(f"Mock persisting to {persist_dir}")
-                                })
-
-                            def insert_nodes(self, nodes, service_context=None):
-                                logger.info(f"Mock inserting {len(nodes)} nodes")
-                                return self
-
-                            def as_query_engine(self, similarity_top_k=5):
-                                return type('obj', (object,), {
-                                    'query': lambda q: type('obj', (object,), {
-                                        'source_nodes': []
-                                    })
-                                })
-
-                        logger.warning("Created minimal functional index object as last resort")
-                        return MinimalIndex()
-                    except Exception as final_error:
-                        logger.error(f"All fallbacks failed. Final error: {str(final_error)}")
-                        logger.critical("Returning emergency fallback object to prevent None index")
-                        return type('EmergencyIndex', (), {
-                            'docstore': type('obj', (object,), {'docs': {}}),
-                            'storage_context': type('obj', (object,), {'persist': lambda persist_dir: None}),
-                            'insert_nodes': lambda nodes, service_context=None: None,
-                            'as_query_engine': lambda similarity_top_k=5: type('obj', (object,), {
-                                'query': lambda q: type('obj', (object,), {'source_nodes': []})
-                            })
-                        })()
 
     def index_documents(self, documents: List[Dict[str, Any]], config: Optional[IndexConfig] = None) -> Dict[str, int]:
         """Index a list of documents"""
         if not documents:
             logger.warning("No documents to index")
             return {"indexed": 0, "skipped": 0, "total": 0}
-        
+
         if config is None:
             config = IndexConfig()
-        
+
         if self.index is None:
             logger.warning("Index is None, attempting to recreate...")
             self.index = self._load_or_create_index()
-        
+
         if not hasattr(self.index, 'insert_nodes') or not callable(getattr(self.index, 'insert_nodes', None)):
             logger.error("Index does not have a valid insert_nodes method")
             raise RuntimeError("Invalid index structure, unable to insert documents")
-            
+
         if not hasattr(self.index, 'storage_context'):
             logger.warning("Index does not have a storage_context attribute, some functionality may be limited")
-        
+
         try:
-            embed_model = CustomOpenAIEmbedding()
-            llm = OpenAI(temperature=0, model=OPENAI_MODEL)
-            service_context = ServiceContext.from_defaults(
-                llm=llm,
-                embed_model=embed_model,
-                node_parser=SimpleNodeParser.from_defaults(
-                    chunk_size=config.chunk_size,
-                    chunk_overlap=config.chunk_overlap
-                )
-            )
-            
             existing_docs = set()
             if not config.force_reindex and os.path.exists(self.documents_dir):
                 for filename in os.listdir(self.documents_dir):
@@ -269,24 +145,24 @@ class DocumentIndexer:
                         doc_id = filename.replace('.json', '')
                         existing_docs.add(doc_id)
                 logger.info(f"Found {len(existing_docs)} already indexed documents")
-            
+
             new_docs = []
             skipped_docs = []
-            
+
             llama_docs = []
             for doc in documents:
                 doc_id = doc.get("doc_id", "")
                 content = doc.get("content", "")
-                
+
                 if not doc_id:
                     logger.warning("Skipping document with empty doc_id")
                     continue
-                
+
                 if not config.force_reindex and doc_id in existing_docs:
                     logger.info(f"Skipping already indexed document: {doc_id}")
                     skipped_docs.append(doc_id)
                     continue
-                
+
                 metadata = {
                     "doc_id": doc_id,
                     "title": doc.get("title", ""),
@@ -294,18 +170,18 @@ class DocumentIndexer:
                     "source_type": doc.get("source_type", ""),
                     "downloaded_at": doc.get("downloaded_at", datetime.now().isoformat())
                 }
-                
+
                 doc_path = os.path.join(self.documents_dir, f"{doc_id}.json")
                 with open(doc_path, "w") as f:
                     json.dump(doc, f)
-                
+
                 llama_docs.append(Document(text=content, metadata=metadata))
                 new_docs.append(doc_id)
-            
+
             if llama_docs:
                 logger.info(f"Indexing {len(llama_docs)} new documents...")
-                self.index.insert_nodes(llama_docs, service_context=service_context)
-                
+                self.index.insert_nodes(llama_docs)
+
                 logger.info(f"Persisting index to {self.index_dir}...")
                 if hasattr(self.index, 'storage_context') and self.index.storage_context is not None:
                     self.index.storage_context.persist(persist_dir=self.index_dir)
@@ -313,7 +189,7 @@ class DocumentIndexer:
                     logger.warning("Index does not have a storage_context, skipping persistence")
             else:
                 logger.info("No new documents to index")
-            
+
             return {"indexed": len(new_docs), "skipped": len(skipped_docs), "total": len(documents)}
         except Exception as e:
             logger.error(f"Error indexing documents: {str(e)}")
