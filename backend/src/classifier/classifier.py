@@ -3,6 +3,8 @@ import logging
 import json
 from typing import List, Dict, Any
 import openai
+from openai import OpenAI
+
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -12,13 +14,27 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+logger.info("Loading environment variables from .env file")
+if os.getenv("OPENROUTER_API_KEY"):
+    openai.api_type = "openrouter"
+    openai.api_key = os.getenv("OPENROUTER_API_KEY")
+    API_URL = "https://openrouter.ai/api/v1"
+    MODEL = "deepseek/deepseek-chat-v3-0324:free"
+    logger.info(f"Using OpenRouter model: {MODEL}")
+else:
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    openai.api_type = "openai"
+    API_URL = "https://api.openai.com/v1"
+    MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    logger.info(f"Using OpenAI model: {MODEL}")
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
-    logger.warning("OPENAI_API_KEY environment variable not set")
+    logger.warning("API_KEY environment variable not set")
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+client = OpenAI(
+    api_key=openai.api_key,
+    base_url=API_URL,
+)
 
 
 class DocumentClassifier:
@@ -26,8 +42,8 @@ class DocumentClassifier:
 
     def __init__(self):
         """分類器の初期化"""
-        self.openai_model = OPENAI_MODEL
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_model = MODEL
+#        self.api_key = os.getenv("OPENAI_API_KEY")
 
         self.nist_categories = {
             "ID": "Identify（特定）",
@@ -134,7 +150,7 @@ class DocumentClassifier:
         """
 
         try:
-            response = openai.chat.completions.create(
+            response = client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
                     {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"},
@@ -143,7 +159,6 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-
             result = json.loads(response.choices[0].message.content)
             return result
         except json.JSONDecodeError as e:
@@ -237,7 +252,7 @@ class DocumentClassifier:
         """
 
         try:
-            response = openai.chat.completions.create(
+            response = client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
                     {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"},
@@ -313,7 +328,7 @@ class DocumentClassifier:
         """
 
         try:
-            response = openai.chat.completions.create(
+            response = client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
                     {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。"},
@@ -348,7 +363,7 @@ class DocumentClassifier:
         """
 
         try:
-            response = openai.chat.completions.create(
+            response = client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
                     {

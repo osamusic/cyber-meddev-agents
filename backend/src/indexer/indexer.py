@@ -14,6 +14,7 @@ from llama_index.core import (
     load_index_from_storage,
 )
 from llama_index.llms.openai import OpenAI
+from llama_index.llms.openrouter import OpenRouter
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core.node_parser import SimpleNodeParser
 
@@ -23,15 +24,25 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
-    logger.warning("OPENAI_API_KEY environment variable not set")
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+if os.getenv("OPENROUTER_API_KEY"):
+    openai.api_type = "openrouter"
+    openai.api_key = os.getenv("OPENROUTER_API_KEY")
+    MODEL = "deepseek/deepseek-chat-v3-0324:free"
+    logger.info(f"Using OpenRouter model: {MODEL}")
+    Settings.llm = OpenRouter(model=MODEL)
+else:
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    openai.api_type = "openai"
+    MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    logger.info(f"Using OpenAI model: {MODEL}")
+    Settings.llm = OpenAI(model=MODEL)
+
+if not openai.api_key:
+    logger.warning("API_KEY environment variable not set")
+
 
 # グローバルな既定値を設定
-Settings.llm = OpenAI(model=OPENAI_MODEL)
 Settings.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
 Settings.node_parser = SimpleNodeParser(chunk_size=256, chunk_overlap=20)
 Settings.num_output = 512
@@ -74,11 +85,6 @@ class DocumentIndexer:
         os.makedirs(self.index_dir, exist_ok=True)
         os.makedirs(self.documents_dir, exist_ok=True)
 
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            logger.warning("OPENAI_API_KEY environment variable is not set. Some functionality may be limited.")
-        openai.api_key = self.api_key
-        self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         self.index = self._load_or_create_index()
 
     def _load_or_create_index(self) -> VectorStoreIndex:

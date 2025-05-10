@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path.cwd()
 db_path = BASE_DIR / "data" / "cyber_med_agent.db"
 db_path.parent.mkdir(parents=True, exist_ok=True)
 sqlite_url = f"sqlite:///{db_path.as_posix()}"
