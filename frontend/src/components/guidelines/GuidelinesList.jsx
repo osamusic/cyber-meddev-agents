@@ -2,9 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
-import { FaChevronDown } from 'react-icons/fa/index.js';
-import { FaChevronRight } from 'react-icons/fa/index.js';
-import { FaPlus } from 'react-icons/fa/index.js';
+import { FaChevronDown } from 'react-icons/fa';
+import { FaChevronRight } from 'react-icons/fa';
+import { FaPlus } from 'react-icons/fa';
 
 const GuidelinesList = () => {
   const [guidelines, setGuidelines] = useState([]);
