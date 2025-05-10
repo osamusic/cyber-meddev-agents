@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import axiosClient from '../../api/axiosClient';
+import { FaSpinner } from 'react-icons/fa';
 
 const ClassificationForm = ({ onClassifyComplete }) => {
   const [loading, setLoading] = useState(false);
@@ -10,6 +11,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const [classifyAll, setClassifyAll] = useState(false);
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [progressStatus, setProgressStatus] = useState('');
   
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -32,14 +34,18 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       setLoading(true);
       setError(null);
       setSuccess(false);
+      setProgressStatus('ドキュメントの分類を開始しています...');
       
       const requestData = {
         all_documents: classifyAll,
         document_ids: classifyAll ? [] : selectedDocuments,
       };
       
+      setProgressStatus('ドキュメントを処理中...');
+      
       const response = await axiosClient.post('/classifier/classify', requestData);
       
+      setProgressStatus('分類処理が完了しました');
       setSuccess(true);
       setSuccessMessage(response.data.message);
       if (onClassifyComplete) {
@@ -48,9 +54,13 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       
     } catch (err) {
       console.error('Error classifying documents:', err);
+      setProgressStatus('エラーが発生しました');
       setError(err.response?.data?.detail || '分類処理中にエラーが発生しました');
     } finally {
-      setLoading(false);
+      setTimeout(() => {
+        setLoading(false);
+        setProgressStatus('');
+      }, 1000); // 1秒後にローディング状態をクリア（進捗表示を確認できるようにするため）
     }
   };
   
@@ -76,6 +86,16 @@ const ClassificationForm = ({ onClassifyComplete }) => {
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
           分類処理が開始されました。結果は数分後に反映されます。
           {successMessage && <p className="mt-2">{successMessage}</p>}
+        </div>
+      )}
+      
+      {loading && (
+        <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4 flex items-center">
+          <FaSpinner className="animate-spin mr-2 text-xl" />
+          <div>
+            <p className="font-medium">分類処理実行中...</p>
+            <p className="text-sm">{progressStatus}</p>
+          </div>
         </div>
       )}
       
@@ -120,13 +140,20 @@ const ClassificationForm = ({ onClassifyComplete }) => {
         <button
           type="submit"
           disabled={loading || (!classifyAll && selectedDocuments.length === 0)}
-          className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded ${
+          className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded flex items-center justify-center ${
             loading || (!classifyAll && selectedDocuments.length === 0)
               ? 'opacity-50 cursor-not-allowed'
               : ''
           }`}
         >
-          {loading ? '処理中...' : '分類を開始'}
+          {loading ? (
+            <>
+              <FaSpinner className="animate-spin mr-2" />
+              処理中...
+            </>
+          ) : (
+            '分類を開始'
+          )}
         </button>
       </form>
     </div>
