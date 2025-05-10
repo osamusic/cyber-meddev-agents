@@ -4,8 +4,8 @@ from typing import List, Dict, Any
 
 class ClassificationRequest(BaseModel):
     """Request to classify document sections"""
-    section_ids: List[str] = []
-    document_ids: List[str] = []
+    section_ids: List[int] = []
+    document_ids: List[int] = []
     all_documents: bool = False
 
 
