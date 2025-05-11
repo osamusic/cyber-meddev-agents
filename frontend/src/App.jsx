@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ProcessProvider } from './contexts/ProcessContext';
 import Header from './components/common/Header';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
@@ -12,14 +13,16 @@ import AdminDocuments from './components/admin/AdminDocuments';
 import NotFound from './components/common/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AdminRoute from './components/auth/AdminRoute';
+import ProgressModal from './components/common/ProgressModal';
 
 function App() {
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-gray-100">
-        <Header />
-        <main className="container mx-auto px-4 py-8">
-          <Routes>
+      <ProcessProvider>
+        <div className="min-h-screen bg-gray-100">
+          <Header />
+          <main className="container mx-auto px-4 py-8">
+            <Routes>
             <Route path="/" element={<Navigate to="/guidelines" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -71,8 +74,10 @@ function App() {
             
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <ProgressModal />
         </main>
       </div>
+      </ProcessProvider>
     </AuthProvider>
   );
 }
