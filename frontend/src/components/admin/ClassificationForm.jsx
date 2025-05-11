@@ -12,6 +12,8 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   const [progressStatus, setProgressStatus] = useState('');
+  const [progress, setProgress] = useState(null);
+  const [pollInterval, setPollInterval] = useState(null);
   
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -27,6 +29,43 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     fetchDocuments();
   }, []);
   
+  useEffect(() => {
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [pollInterval]);
+  
+  const startProgressPolling = () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+    
+    const interval = setInterval(async () => {
+      try {
+        const progressResponse = await axiosClient.get('/classifier/progress');
+        setProgress(progressResponse.data);
+        
+        if (['completed', 'error'].includes(progressResponse.data.status)) {
+          stopProgressPolling();
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error fetching classification progress:', error);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    setPollInterval(interval);
+  };
+
+  const stopProgressPolling = () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      setPollInterval(null);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -34,33 +73,29 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       setLoading(true);
       setError(null);
       setSuccess(false);
-      setProgressStatus('ドキュメントの分類を開始しています...');
+      setProgress(null);
       
       const requestData = {
         all_documents: classifyAll,
         document_ids: classifyAll ? [] : selectedDocuments,
       };
       
-      setProgressStatus('ドキュメントを処理中...');
-      
       const response = await axiosClient.post('/classifier/classify', requestData);
       
-      setProgressStatus('分類処理が完了しました');
       setSuccess(true);
       setSuccessMessage(response.data.message);
+      
+      startProgressPolling();
+      
       if (onClassifyComplete) {
         onClassifyComplete(response.data);
       }
       
     } catch (err) {
       console.error('Error classifying documents:', err);
-      setProgressStatus('エラーが発生しました');
       setError(err.response?.data?.detail || '分類処理中にエラーが発生しました');
-    } finally {
-      setTimeout(() => {
-        setLoading(false);
-        setProgressStatus('');
-      }, 1000); // 1秒後にローディング状態をクリア（進捗表示を確認できるようにするため）
+      stopProgressPolling(); // Stop polling if there's an error
+      setLoading(false);
     }
   };
   
@@ -94,8 +129,25 @@ const ClassificationForm = ({ onClassifyComplete }) => {
           <FaSpinner className="animate-spin mr-2 text-xl" />
           <div>
             <p className="font-medium">分類処理実行中...</p>
-            <p className="text-sm">{progressStatus}</p>
           </div>
+        </div>
+      )}
+      
+      {/* Progress display */}
+      {progress && (
+        <div className="mb-4">
+          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+            <div 
+              className="bg-blue-600 h-2.5 rounded-full" 
+              style={{ width: `${(progress.current_count / progress.total_count) * 100}%` }}
+            ></div>
+          </div>
+          <p className="text-sm text-gray-600">
+            {progress.status === 'initializing' && '初期化中...'}
+            {progress.status === 'in_progress' && `処理中... ${progress.current_count}/${progress.total_count} ドキュメント完了`}
+            {progress.status === 'completed' && 'すべてのドキュメントの分類が完了しました'}
+            {progress.status === 'error' && '分類処理中にエラーが発生しました'}
+          </p>
         </div>
       )}
       
@@ -149,7 +201,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
           {loading ? (
             <>
               <FaSpinner className="animate-spin mr-2" />
-              処理中...
+              {progress ? `処理中... ${progress.current_count}/${progress.total_count}` : '処理中...'}
             </>
           ) : (
             '分類を開始'
