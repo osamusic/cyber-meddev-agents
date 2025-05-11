@@ -37,6 +37,15 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     };
   }, [pollInterval]);
   
+  useEffect(() => {
+    if (progress?.status === 'completed') {
+      setSuccess(true);  // ✅ 分類完了したら表示
+    }
+    if (progress?.status === 'error') {
+      setError('分類処理中にエラーが発生しました');
+    }
+  }, [progress]);
+
   const startProgressPolling = () => {
     if (pollInterval) {
       clearInterval(pollInterval);
@@ -82,14 +91,9 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       
       const response = await axiosClient.post('/classifier/classify', requestData);
       
-      setSuccess(true);
-      setSuccessMessage(response.data.message);
-      
+      setSuccessMessage("分類処理を開始しました。進捗状況を確認しています...");
       startProgressPolling();
-      
-      if (onClassifyComplete) {
-        onClassifyComplete(response.data);
-      }
+    
       
     } catch (err) {
       console.error('Error classifying documents:', err);
