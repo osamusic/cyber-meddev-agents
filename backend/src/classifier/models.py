@@ -28,6 +28,9 @@ class ClassificationResult(BaseModel):
     frameworks: List[str]
     skipped_documents: List[str] = []
     message: Optional[str] = None
+    total_count: int = 0
+    current_count: int = 0
+    status: str = "initializing"  # initializing, in_progress, completed, error
 
     class Config:
         from_attributes = True

@@ -12,6 +12,14 @@ from ..auth.models import User
 from .models import ClassificationRequest, ClassificationConfig, ClassificationResult
 from .classifier import DocumentClassifier
 
+classification_progress = {
+    "total_documents": 0,
+    "processed_documents": 0,
+    "status": "idle",  # idle, initializing, in_progress, completed, error
+    "started_at": None,
+    "completed_at": None
+}
+
 router = APIRouter(
     prefix="/classifier",
     tags=["classifier"],
@@ -83,6 +91,15 @@ async def classify_documents(
         db=db
     )
 
+    global classification_progress
+    classification_progress = {
+        "total_documents": len(documents),
+        "processed_documents": 0,
+        "status": "initializing",
+        "started_at": datetime.utcnow(),
+        "completed_at": None
+    }
+
     message = None
     if already_classified_docs:
         message = f"次のドキュメントは既に分類されているためスキップされました: {', '.join(already_classified_docs)}"
@@ -92,7 +109,10 @@ async def classify_documents(
         categories_count={},
         frameworks=["NIST_CSF", "IEC_62443"],
         skipped_documents=already_classified_docs,
-        message=message
+        message=message,
+        total_count=len(documents),
+        current_count=0,
+        status="initializing"
     )
 
 
@@ -269,29 +289,54 @@ async def classify_documents_background(
 ):
     """バックグラウンドでドキュメントを分類"""
     logger.info(f"Starting background classification for {len(documents)} documents")
-
-    for doc_id in documents:
+    
+    # Update status to in_progress
+    global classification_progress
+    classification_progress["status"] = "in_progress"
+    
+    for idx, doc_id in enumerate(documents):
         try:
             document = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
             if not document:
                 logger.warning(f"Document {doc_id} not found")
                 continue
-
+            
             classification_result = classifier.classify_document(document.content, config)
-
+            
             db_classification = DBClassificationResult(
                 document_id=doc_id,
                 user_id=user_id,
                 result_json=json.dumps(classification_result),
                 created_at=datetime.now()
             )
-
+            
             db.add(db_classification)
             db.commit()
-
-            logger.info(f"Classification completed for document {doc_id}")
+            
+            classification_progress["processed_documents"] = idx + 1
+            
+            logger.info(f"Classification completed for document {doc_id} ({idx + 1}/{len(documents)})")
         except Exception as e:
             logger.error(f"Error classifying document {doc_id}: {str(e)}")
             db.rollback()
-
+    
+    classification_progress["status"] = "completed"
+    classification_progress["completed_at"] = datetime.utcnow()
     logger.info("Background classification completed for all documents")
+
+
+@router.get("/progress", response_model=ClassificationResult)
+async def get_classification_progress(
+    current_user: User = Depends(get_current_active_user),
+):
+    """ドキュメント分類の進捗状況を取得"""
+    global classification_progress
+    
+    return ClassificationResult(
+        processed_count=classification_progress["total_documents"],
+        categories_count={},
+        frameworks=["NIST_CSF", "IEC_62443"],
+        total_count=classification_progress["total_documents"],
+        current_count=classification_progress["processed_documents"],
+        status=classification_progress["status"]
+    )
