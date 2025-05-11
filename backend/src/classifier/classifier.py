@@ -40,6 +40,27 @@ client = OpenAI(
 max_document_size = os.getenv("MAX_DOCUMENT_SIZE", 4000)
 
 
+def extract_json(raw: str) -> dict:
+    # ```json ... ``` の中を抽出（最優先）
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.S)
+    json_text = match.group(1) if match else raw
+
+    # 前後に余計な文字がついている場合をクリーンアップ
+    json_text = json_text.strip()
+
+    # 先頭にゴミ文字がついている場合を削除（例: "y\n { ... }"）
+    json_text = re.sub(r'^[^\{\[]*', '', json_text)  # 最初の { までの文字を除去
+    json_text = re.sub(r'[^\}\]]*$', '', json_text)  # 最後の } のあとを除去
+
+    try:
+        return json.loads(json_text)
+    except json.JSONDecodeError as e:
+        # デバッグ用に失敗した場合のログも残す
+        print("JSON parse error:", e)
+        print("Attempted JSON text:", json_text)
+        raise
+
+
 class DocumentClassifier:
     """医療機器サイバーセキュリティドキュメント分類器"""
 
@@ -162,9 +183,7 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            raw = response.choices[0].message.content
-            match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
-            json_text = match.group(1) if match else raw
+            json_text = extract_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result
         except json.JSONDecodeError as e:
@@ -269,9 +288,7 @@ class DocumentClassifier:
                 response_format={"type": "json_object"}
             )
 
-            raw = response.choices[0].message.content
-            match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
-            json_text = match.group(1) if match else raw
+            json_text = extract_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result
         except json.JSONDecodeError as e:
@@ -347,9 +364,7 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            raw = response.choices[0].message.content
-            match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
-            json_text = match.group(1) if match else raw
+            json_text = extract_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result.get("keywords", [])
         except Exception as e:

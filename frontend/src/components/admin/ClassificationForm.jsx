@@ -32,10 +32,18 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     fetchDocuments();
   }, []);
   
-  
+  const resetForm = () => {
+    setSuccess(false);
+    setSuccessMessage(null);
+    setSelectedDocuments([]);
+    setClassifyAll(false);
+  };
+
   useEffect(() => {
     if (progress?.status === 'completed') {
-      setSuccess(true);  // ✅ 分類完了したら表示
+      setSuccess(true);
+      setSelectedDocuments([]);
+      setClassifyAll(false);
       if (onClassifyComplete) {
         onClassifyComplete();
       }
@@ -46,7 +54,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    setSuccess(false);
+    resetForm();
     setSuccessMessage("分類処理を開始しました。進捗状況を確認しています...");
     
     const requestData = {

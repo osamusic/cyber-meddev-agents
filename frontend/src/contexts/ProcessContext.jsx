@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import axiosClient from '../api/axiosClient';
 
@@ -8,79 +8,88 @@ export const ProcessProvider = ({ children }) => {
   const [classificationLoading, setClassificationLoading] = useState(false);
   const [classificationError, setClassificationError] = useState(null);
   const [classificationProgress, setClassificationProgress] = useState(null);
-  const [pollInterval, setPollInterval] = useState(null);
   const [showProgressModal, setShowProgressModal] = useState(false);
-  
+
+  const pollIntervalRef = useRef(null);
+
+  // クリーンアップ
   useEffect(() => {
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
       }
     };
-  }, [pollInterval]);
-  
+  }, []);
+
+  // モーダルの開閉制御
   useEffect(() => {
     if (classificationLoading) {
       setShowProgressModal(true);
-    } else if (classificationProgress?.status === 'completed' || classificationProgress?.status === 'error') {
+    } else if (
+      classificationProgress?.status === 'completed' ||
+      classificationProgress?.status === 'error'
+    ) {
       setTimeout(() => {
         setShowProgressModal(false);
       }, 3000);
     }
   }, [classificationLoading, classificationProgress]);
-  
+
   const startClassificationProgressPolling = () => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
     }
-    
-    const interval = setInterval(async () => {
+
+    pollIntervalRef.current = setInterval(async () => {
       try {
-        const progressResponse = await axiosClient.get('/classifier/progress');
-        setClassificationProgress(progressResponse.data);
-        
-        if (['completed', 'error'].includes(progressResponse.data.status)) {
+        const res = await axiosClient.get('/classifier/progress');
+        setClassificationProgress(res.data);
+
+        if (['completed', 'error'].includes(res.data.status)) {
           stopProgressPolling();
           setClassificationLoading(false);
         }
-      } catch (error) {
-        console.error('Error fetching classification progress:', error);
+      } catch (err) {
+        console.error('進捗取得エラー:', err);
+        stopProgressPolling();
+        setClassificationError('進捗取得に失敗しました');
+        setClassificationLoading(false);
       }
-    }, 2000); // Poll every 2 seconds
-    
-    setPollInterval(interval);
+    }, 2000);
   };
-  
+
   const stopProgressPolling = () => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      setPollInterval(null);
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
   };
-  
+
   const startClassification = async (requestData) => {
     try {
       setClassificationLoading(true);
       setClassificationError(null);
       setClassificationProgress(null);
-      
+
       await axiosClient.post('/classifier/classify', requestData);
-      
+
       startClassificationProgressPolling();
       return true;
     } catch (err) {
-      console.error('Error classifying documents:', err);
-      setClassificationError(err.response?.data?.detail || '分類処理中にエラーが発生しました');
+      console.error('分類エラー:', err);
+      setClassificationError(
+        err.response?.data?.detail || '分類処理中にエラーが発生しました'
+      );
       stopProgressPolling();
       setClassificationLoading(false);
       return false;
     }
   };
-  
+
   const closeProgressModal = () => {
     setShowProgressModal(false);
   };
-  
+
   const value = {
     classificationLoading,
     classificationError,
@@ -89,12 +98,8 @@ export const ProcessProvider = ({ children }) => {
     startClassification,
     closeProgressModal,
   };
-  
-  return (
-    <ProcessContext.Provider value={value}>
-      {children}
-    </ProcessContext.Provider>
-  );
+
+  return <ProcessContext.Provider value={value}>{children}</ProcessContext.Provider>;
 };
 
 export const useProcess = () => {
@@ -106,7 +111,5 @@ export const useProcess = () => {
 };
 
 ProcessProvider.propTypes = {
-  children: PropTypes.node.isRequired
+  children: PropTypes.node.isRequired,
 };
-
-export default ProcessContext;
