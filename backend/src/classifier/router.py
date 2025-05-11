@@ -1,16 +1,22 @@
+from .classifier import DocumentClassifier
+from .models import ClassificationRequest, ClassificationConfig, ClassificationResult
+from ..auth.models import User
+from ..auth.auth import get_current_active_user, get_current_admin_user
+from ..db.models import DocumentModel as DBDocument, ClassificationResult as DBClassificationResult
+from ..db.database import get_db, SessionLocal
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Request
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 import logging
 from datetime import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
+from functools import partial
 
-from ..db.database import get_db
-from ..db.models import DocumentModel as DBDocument, ClassificationResult as DBClassificationResult
-from ..auth.auth import get_current_active_user, get_current_admin_user
-from ..auth.models import User
-from .models import ClassificationRequest, ClassificationConfig, ClassificationResult
-from .classifier import DocumentClassifier
+
+executor = ThreadPoolExecutor(max_workers=1)  # 同時1スレッドで制御（必要なら増やす）
+
 
 classification_progress = {
     "total_documents": 0,
@@ -65,11 +71,11 @@ async def classify_documents(
             doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
             if not doc:
                 continue
-                
+
             existing_classification = db.query(DBClassificationResult).filter(
                 DBClassificationResult.document_id == doc_id
             ).first()
-            
+
             if existing_classification:
                 already_classified_docs.append(doc.title or f"Document {doc_id}")
             else:
@@ -83,13 +89,13 @@ async def classify_documents(
             detail="No documents found for classification"
         )
 
-    background_tasks.add_task(
+    task_fn = partial(
         classify_documents_background,
-        documents=[doc.id for doc in documents],
-        config=ClassificationConfig(),
-        user_id=current_user.id,
-        db=db
+        [doc.id for doc in documents],
+        ClassificationConfig(),
+        current_user.id
     )
+    asyncio.get_event_loop().run_in_executor(executor, task_fn)
 
     global classification_progress
     classification_progress = {
@@ -103,7 +109,7 @@ async def classify_documents(
     message = None
     if already_classified_docs:
         message = f"次のドキュメントは既に分類されているためスキップされました: {', '.join(already_classified_docs)}"
-    
+
     return ClassificationResult(
         processed_count=len(documents),
         categories_count={},
@@ -281,48 +287,51 @@ async def get_all_classifications(
     return results
 
 
-async def classify_documents_background(
-    documents: List[int],
+def classify_documents_background(
+    doc_id: int,
     config: ClassificationConfig,
-    user_id: int,
-    db: Session
+    user_id: int
 ):
     """バックグラウンドでドキュメントを分類"""
     logger.info(f"Starting background classification for {len(documents)} documents")
-    
-    # Update status to in_progress
-    global classification_progress
-    classification_progress["status"] = "in_progress"
-    
-    for idx, doc_id in enumerate(documents):
-        try:
-            document = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
-            if not document:
-                logger.warning(f"Document {doc_id} not found")
-                continue
-            
-            classification_result = classifier.classify_document(document.content, config)
-            
-            db_classification = DBClassificationResult(
-                document_id=doc_id,
-                user_id=user_id,
-                result_json=json.dumps(classification_result),
-                created_at=datetime.now()
-            )
-            
-            db.add(db_classification)
-            db.commit()
-            
-            classification_progress["processed_documents"] = idx + 1
-            
-            logger.info(f"Classification completed for document {doc_id} ({idx + 1}/{len(documents)})")
-        except Exception as e:
-            logger.error(f"Error classifying document {doc_id}: {str(e)}")
-            db.rollback()
-    
-    classification_progress["status"] = "completed"
-    classification_progress["completed_at"] = datetime.utcnow()
-    logger.info("Background classification completed for all documents")
+
+    db = SessionLocal()
+    try:
+        # Update status to in_progress
+        global classification_progress
+        classification_progress["status"] = "in_progress"
+
+        for idx, doc_id in enumerate(documents):
+            try:
+                document = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
+                if not document:
+                    logger.warning(f"Document {doc_id} not found")
+                    continue
+
+                classification_result = classifier.classify_document(document.content, config)
+
+                db_classification = DBClassificationResult(
+                    document_id=doc_id,
+                    user_id=user_id,
+                    result_json=json.dumps(classification_result),
+                    created_at=datetime.now()
+                )
+
+                db.add(db_classification)
+                db.commit()
+
+                classification_progress["processed_documents"] = idx + 1
+
+                logger.info(f"Classification completed for document {doc_id} ({idx + 1}/{len(documents)})")
+            except Exception as e:
+                logger.error(f"Error classifying document {doc_id}: {str(e)}")
+                db.rollback()
+
+        classification_progress["status"] = "completed"
+        classification_progress["completed_at"] = datetime.utcnow()
+    finally:
+        db.close()
+        logger.info("Background classification completed for all documents")
 
 
 @router.get("/progress", response_model=ClassificationResult)
@@ -331,7 +340,7 @@ async def get_classification_progress(
 ):
     """ドキュメント分類の進捗状況を取得"""
     global classification_progress
-    
+
     return ClassificationResult(
         processed_count=classification_progress["total_documents"],
         categories_count={},
