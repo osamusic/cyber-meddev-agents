@@ -288,7 +288,7 @@ async def get_all_classifications(
 
 
 def classify_documents_background(
-    doc_id: int,
+    documents: List[int],
     config: ClassificationConfig,
     user_id: int
 ):
