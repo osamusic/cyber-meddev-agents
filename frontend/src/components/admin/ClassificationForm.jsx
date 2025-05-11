@@ -2,18 +2,21 @@ import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import axiosClient from '../../api/axiosClient';
 import { FaSpinner } from 'react-icons/fa';
+import { useProcess } from '../../contexts/ProcessContext';
 
 const ClassificationForm = ({ onClassifyComplete }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const { 
+    classificationLoading: loading, 
+    classificationError: error, 
+    classificationProgress: progress, 
+    startClassification 
+  } = useProcess();
+  
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [classifyAll, setClassifyAll] = useState(false);
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [progressStatus, setProgressStatus] = useState('');
-  const [progress, setProgress] = useState(null);
-  const [pollInterval, setPollInterval] = useState(null);
   
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -29,78 +32,29 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     fetchDocuments();
   }, []);
   
-  useEffect(() => {
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
-    };
-  }, [pollInterval]);
   
   useEffect(() => {
     if (progress?.status === 'completed') {
       setSuccess(true);  // ✅ 分類完了したら表示
-    }
-    if (progress?.status === 'error') {
-      setError('分類処理中にエラーが発生しました');
-    }
-  }, [progress]);
-
-  const startProgressPolling = () => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-    
-    const interval = setInterval(async () => {
-      try {
-        const progressResponse = await axiosClient.get('/classifier/progress');
-        setProgress(progressResponse.data);
-        
-        if (['completed', 'error'].includes(progressResponse.data.status)) {
-          stopProgressPolling();
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Error fetching classification progress:', error);
+      if (onClassifyComplete) {
+        onClassifyComplete();
       }
-    }, 2000); // Poll every 2 seconds
-    
-    setPollInterval(interval);
-  };
-
-  const stopProgressPolling = () => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      setPollInterval(null);
     }
-  };
+  }, [progress, onClassifyComplete]);
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    try {
-      setLoading(true);
-      setError(null);
-      setSuccess(false);
-      setProgress(null);
-      
-      const requestData = {
-        all_documents: classifyAll,
-        document_ids: classifyAll ? [] : selectedDocuments,
-      };
-      
-      const response = await axiosClient.post('/classifier/classify', requestData);
-      
-      setSuccessMessage("分類処理を開始しました。進捗状況を確認しています...");
-      startProgressPolling();
+    setSuccess(false);
+    setSuccessMessage("分類処理を開始しました。進捗状況を確認しています...");
     
-      
-    } catch (err) {
-      console.error('Error classifying documents:', err);
-      setError(err.response?.data?.detail || '分類処理中にエラーが発生しました');
-      stopProgressPolling(); // Stop polling if there's an error
-      setLoading(false);
-    }
+    const requestData = {
+      all_documents: classifyAll,
+      document_ids: classifyAll ? [] : selectedDocuments,
+    };
+    
+    await startClassification(requestData);
   };
   
   const handleDocumentSelect = (e, docId) => {
