@@ -87,7 +87,6 @@ class DocumentClassifier:
 
     def classify_document(self, document_text: str, config: ClassificationConfig) -> Dict[str, Any]:
         """ドキュメントをNISTとIECフレームワークに基づいて分類"""
-        frameworks = config.frameworks
         result = {
             "timestamp": datetime.now().isoformat(),
             "frameworks": {},
