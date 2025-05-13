@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axiosClient from '../../api/axiosClient';
+import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
 
 const AdminDocuments = () => {
   const [documents, setDocuments] = useState([]);
@@ -7,6 +8,7 @@ const AdminDocuments = () => {
   const [error, setError] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
     fetchDocuments();
@@ -57,6 +59,27 @@ const AdminDocuments = () => {
     return new Date(dateString).toLocaleString('ja-JP');
   };
 
+  const toggleGroup = (groupTitle) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupTitle]: !prev[groupTitle]
+    }));
+  };
+
+  const groupDocumentsByOriginalTitle = () => {
+    const groups = {};
+    
+    documents.forEach(doc => {
+      const groupTitle = doc.original_title || doc.title;
+      if (!groups[groupTitle]) {
+        groups[groupTitle] = [];
+      }
+      groups[groupTitle].push(doc);
+    });
+    
+    return groups;
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -64,6 +87,8 @@ const AdminDocuments = () => {
       </div>
     );
   }
+
+  const documentGroups = groupDocumentsByOriginalTitle();
 
   return (
     <div>
@@ -76,89 +101,108 @@ const AdminDocuments = () => {
       )}
       
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                ID
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                タイトル
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                ソース
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                ダウンロード日時
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                アクション
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {documents.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
-                  ドキュメントが見つかりません
-                </td>
-              </tr>
-            ) : (
-              documents.map((doc) => (
-                <tr key={doc.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {doc.doc_id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {doc.title}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <a 
-                      href={doc.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {doc.source_type}
-                    </a>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(doc.downloaded_at)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {deleteConfirmation === doc.doc_id ? (
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => deleteDocument(doc.doc_id)}
-                          disabled={actionInProgress}
-                          className={`text-red-600 hover:text-red-900 ${
-                            actionInProgress ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                        >
-                          確認
-                        </button>
-                        <button
-                          onClick={cancelDelete}
-                          disabled={actionInProgress}
-                          className="text-gray-600 hover:text-gray-900"
-                        >
-                          キャンセル
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => confirmDelete(doc.doc_id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        削除
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        {Object.keys(documentGroups).length === 0 ? (
+          <div className="px-6 py-4 text-center text-gray-500">
+            ドキュメントが見つかりません
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {Object.entries(documentGroups).map(([groupTitle, docs]) => (
+              <div key={groupTitle} className="border-b border-gray-200 last:border-b-0">
+                <div 
+                  className="px-6 py-4 bg-gray-50 flex items-center cursor-pointer"
+                  onClick={() => toggleGroup(groupTitle)}
+                >
+                  <div className="mr-2">
+                    {expandedGroups[groupTitle] ? <FaChevronDown /> : <FaChevronRight />}
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900">{groupTitle}</h3>
+                  <span className="ml-2 text-sm text-gray-500">({docs.length}件)</span>
+                </div>
+                
+                {expandedGroups[groupTitle] && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            ID
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            タイトル
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            ソース
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            ダウンロード日時
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            アクション
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {docs.map((doc) => (
+                          <tr key={doc.id || doc.doc_id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {doc.doc_id}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {doc.title}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <a 
+                                href={doc.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline"
+                              >
+                                {doc.source_type}
+                              </a>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(doc.downloaded_at)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {deleteConfirmation === doc.doc_id ? (
+                                <div className="flex space-x-2">
+                                  <button
+                                    onClick={() => deleteDocument(doc.doc_id)}
+                                    disabled={actionInProgress}
+                                    className={`text-red-600 hover:text-red-900 ${
+                                      actionInProgress ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
+                                  >
+                                    確認
+                                  </button>
+                                  <button
+                                    onClick={cancelDelete}
+                                    disabled={actionInProgress}
+                                    className="text-gray-600 hover:text-gray-900"
+                                  >
+                                    キャンセル
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => confirmDelete(doc.doc_id)}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  削除
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

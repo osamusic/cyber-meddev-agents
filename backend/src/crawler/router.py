@@ -69,6 +69,7 @@ async def get_crawler_status(
             doc_id=doc.doc_id,
             url=doc.url,
             title=doc.title,
+            original_title=doc.original_title if doc.original_title else doc.title,
             content=doc.content,
             source_type=doc.source_type,
             downloaded_at=doc.downloaded_at,
@@ -90,6 +91,7 @@ def run_crawler_task(target: CrawlTarget, db: SQLAlchemySession, user_id: int):
 
             if existing_doc:
                 existing_doc.title = doc.title
+                existing_doc.original_title = doc.original_title
                 existing_doc.content = doc.content
                 existing_doc.downloaded_at = doc.downloaded_at
             else:
@@ -97,6 +99,7 @@ def run_crawler_task(target: CrawlTarget, db: SQLAlchemySession, user_id: int):
                     doc_id=doc.doc_id,
                     url=doc.url,
                     title=doc.title,
+                    original_title=doc.original_title,
                     content=doc.content,
                     source_type=doc.source_type,
                     downloaded_at=doc.downloaded_at,

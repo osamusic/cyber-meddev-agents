@@ -92,19 +92,22 @@ class Crawler:
         except Exception as e:
             logger.error(f"Error processing {url}: {str(e)}")
 
-    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None, toc_info: Optional[List[Dict]] = None) -> List[Document]:
+    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None, toc_info: Optional[List[Dict]] = None, original_title: Optional[str] = None) -> List[Document]:
         """大きなドキュメントを適切なサイズに分割する"""
         max_size = self.max_document_size
         if target and target.max_document_size:
             max_size = target.max_document_size
         logger.info(f"Splitting document from {url} with max size {max_size}, content length: {len(content)} characters")
 
+        if original_title is None:
+            original_title = title
         if len(content) <= max_size:
             doc_id = hashlib.sha256(url.encode()).hexdigest()
             return [Document(
                 doc_id=doc_id,
                 url=url,
                 title=title,
+                original_title=original_title,
                 content=content,
                 source_type=source_type,
                 downloaded_at=datetime.now(),
@@ -239,6 +242,7 @@ class Crawler:
                 doc_id=chunk_id,
                 url=url,
                 title=chunk_title,
+                original_title=original_title,
                 content=chunk_content,
                 source_type=source_type,
                 downloaded_at=datetime.now(),
@@ -311,6 +315,7 @@ class Crawler:
                 toc_info = None
 
             title_str = str(title) if title is not None else url
+            original_title_str = title_str
 
             return self._split_document(
                 content=content,
@@ -318,7 +323,8 @@ class Crawler:
                 url=url,
                 title=title_str,
                 target=target,
-                toc_info=toc_info
+                toc_info=toc_info,
+                original_title=original_title_str
             )
 
         except Exception as e:
