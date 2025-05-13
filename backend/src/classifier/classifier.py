@@ -95,20 +95,26 @@ class DocumentClassifier:
             "timestamp": datetime.now().isoformat(),
             "frameworks": {},
             "keywords": [],
-            "requirements": "",
+            "requirements": [],
         }
-        extracts = self._extract_document(document_text)
-        result["requirements"] = extracts
-        nist_result = self._classify_nist(extracts)
+        requirements_list = self._extract_document(document_text)
+        result["requirements"] = requirements_list
+        
+        requirements_text = ""
+        if requirements_list:
+            requirements_text = "\n".join([f"{item.get('id', i+1)}. 【{item.get('type', '必須')}】{item.get('text', '')}" 
+                                         for i, item in enumerate(requirements_list)])
+        
+        nist_result = self._classify_nist(requirements_text or document_text)
         result["frameworks"]["NIST_CSF"] = nist_result
-        iec_result = self._classify_iec(extracts)
+        iec_result = self._classify_iec(requirements_text or document_text)
         result["frameworks"]["IEC_62443"] = iec_result
-        keywords = self._extract_keywords(extracts, config.keyword_config)
+        keywords = self._extract_keywords(requirements_text or document_text, config.keyword_config)
         result["keywords"] = keywords
 
         return result
 
-    def _extract_document(self, document_text: str) -> str:
+    def _extract_document(self, document_text: str) -> List[Dict[str, Any]]:
         """セキュリティ要件の抽出"""
         prompt = f"""
         あなたは医療機器サイバーセキュリティの専門家です。
@@ -120,10 +126,26 @@ class DocumentClassifier:
         テキスト:
         {document_text[:max_document_size]}
 
-        ## 出力形式（例）:
-        1. 【必須】ユーザー認証には多要素認証を用いること  
-        2. 【推奨】外部インターフェースにはファイアウォールを設置すること  
-        3. 【必須】ログは改ざん検知が可能な形式で保存すること
+        以下のJSON形式で回答してください。有効なJSONのみを返してください:
+        {{
+            "requirements": [
+                {{
+                    "id": 1,
+                    "type": "必須",
+                    "text": "ユーザー認証には多要素認証を用いること"
+                }},
+                {{
+                    "id": 2,
+                    "type": "推奨",
+                    "text": "外部インターフェースにはファイアウォールを設置すること"
+                }},
+                {{
+                    "id": 3,
+                    "type": "必須",
+                    "text": "ログは改ざん検知が可能な形式で保存すること"
+                }}
+            ]
+        }}
         """
 
         try:
@@ -132,16 +154,23 @@ class DocumentClassifier:
                 messages=[
                     {
                         "role": "system",
-                        "content": "あなたは医療機器サイバーセキュリティの専門家です。"
+                        "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"
                     },
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
+                response_format={"type": "json_object"},
             )
-            return response.choices[0].message.content
+            json_text = response.choices[0].message.content
+            result = json.loads(json_text)
+            return result.get("requirements", [])
+        except json.JSONDecodeError as e:
+            logger.error(f"要件抽出JSON解析エラー: {str(e)}")
+            logger.error(f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}")
+            return []
         except Exception as e:
             logger.error(f"抽出エラー: {str(e)}")
-            return f"抽出中にエラーが発生しました: {str(e)}"
+            return []
 
     def _classify_nist(self, document_text: str) -> Dict[str, Any]:
         """NISTサイバーセキュリティフレームワークに基づいて分類"""
