@@ -99,12 +99,12 @@ class DocumentClassifier:
         }
         requirements_list = self._extract_document(document_text)
         result["requirements"] = requirements_list
-        
+
         requirements_text = ""
         if requirements_list:
-            requirements_text = "\n".join([f"{item.get('id', i+1)}. 【{item.get('type', '必須')}】{item.get('text', '')}" 
-                                         for i, item in enumerate(requirements_list)])
-        
+            requirements_text = "\n".join([f"{item.get('id', i + 1)}. 【{item.get('type', '必須')}】{item.get('text', '')}"
+                                           for i, item in enumerate(requirements_list)])
+
         nist_result = self._classify_nist(requirements_text or document_text)
         result["frameworks"]["NIST_CSF"] = nist_result
         iec_result = self._classify_iec(requirements_text or document_text)
@@ -120,7 +120,7 @@ class DocumentClassifier:
         あなたは医療機器サイバーセキュリティの専門家です。
         以下のテキストには、セキュリティ対策に関する「推奨事項」および「必須要件（義務）」が含まれています。  
         この中から、セキュリティ上の**要求事項（セキュリティ対策）**を読み取り、以下の形式でリストアップしてください。
-        - 「必須」か「推奨」かを明記してください
+        - 「必須」か「推奨」かを判断してください
         - 原文の要点を簡潔にまとめてください（引用ではなく、整理された要求文として）
 
         テキスト:
@@ -146,6 +146,7 @@ class DocumentClassifier:
                 }}
             ]
         }}
+        必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
 
         try:
@@ -161,7 +162,7 @@ class DocumentClassifier:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            json_text = response.choices[0].message.content
+            json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result.get("requirements", [])
         except json.JSONDecodeError as e:
@@ -229,7 +230,7 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                # response_format={"type": "json_object"},
+                response_format={"type": "json_object"},
             )
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
@@ -331,7 +332,7 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                # response_format={"type": "json_object"},
+                response_format={"type": "json_object"},
             )
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
@@ -407,7 +408,7 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                # response_format={"type": "json_object"},
+                response_format={"type": "json_object"},
             )
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
