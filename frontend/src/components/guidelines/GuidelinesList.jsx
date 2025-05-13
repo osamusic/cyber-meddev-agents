@@ -155,7 +155,7 @@ const GuidelinesList = () => {
     );
   }
 
-  const createGuidelineFromClassification = async (classification) => {
+  const createGuidelineFromClassification = async (classification, selectedReqs = []) => {
     if (!classification) return;
     
     try {
@@ -175,20 +175,38 @@ const GuidelinesList = () => {
         guidelineId = `CUSTOM-${Date.now()}`;
       }
       
+      let controlText = '';
+      if (Array.isArray(classification.requirements)) {
+        const filteredRequirements = classification.requirements.filter(req => 
+          selectedReqs.includes(req.id)
+        );
+        
+        if (filteredRequirements.length > 0) {
+          controlText = filteredRequirements.map(req => 
+            `${req.id}. 【${req.type}】${req.text}`
+          ).join('\n');
+        } else {
+          controlText = '選択された要件はありません';
+        }
+      } else {
+        controlText = classification.requirements || '分類結果から生成されたガイドライン';
+      }
+      
+      // source_urlをDBから取得
       let documentUrl = '';
       try {
         const documentResponse = await axiosClient.get(`/documents/${classification.document_id}`);
-        documentUrl = documentResponse.data.source_url || `https://example.com/document/${classification.document_id}`;
+        documentUrl = documentResponse.data.source_url || '';
       } catch (docErr) {
         console.warn('ドキュメント情報取得エラー:', docErr);
-        documentUrl = `https://example.com/document/${classification.document_id}`;
+        documentUrl = '';
       }
       
       const guidelineData = {
         guideline_id: guidelineId,
         category: nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom'),
         standard: nistCategory || iecRequirement || 'Custom',
-        control_text: classification.requirements || '分類結果から生成されたガイドライン',
+        control_text: controlText,
         source_url: documentUrl,
         region: 'International',
         keywords: processedKeywords
@@ -246,6 +264,22 @@ const GuidelinesList = () => {
   };
   
 const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) => {
+    const [selectedRequirements, setSelectedRequirements] = useState([]);
+    
+    const toggleRequirement = (reqId) => {
+      if (selectedRequirements.includes(reqId)) {
+        setSelectedRequirements(selectedRequirements.filter(id => id !== reqId));
+      } else {
+        setSelectedRequirements([...selectedRequirements, reqId]);
+      }
+    };
+    
+    useEffect(() => {
+      if (classification && Array.isArray(classification.requirements)) {
+        setSelectedRequirements(classification.requirements.map(req => req.id));
+      }
+    }, [classification]);
+    
     if (!classification) return null;
     
     return (
@@ -266,7 +300,29 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
           <p><span className="font-medium">作成日時:</span> {new Date(classification.created_at).toLocaleString('ja-JP')}</p>
         </div>
         
-        <ReactMarkdown>{`**要件**\n\n${classification.requirements}`}</ReactMarkdown>
+        <div className="mb-4">
+          <h4 className="text-lg font-medium mb-2">要件リスト</h4>
+          {Array.isArray(classification.requirements) ? (
+            <div className="space-y-2">
+              {classification.requirements.map((req) => (
+                <div key={req.id} className="flex items-start">
+                  <input
+                    type="checkbox"
+                    id={`req-${req.id}`}
+                    className="mt-1 mr-2"
+                    checked={selectedRequirements.includes(req.id)}
+                    onChange={() => toggleRequirement(req.id)}
+                  />
+                  <label htmlFor={`req-${req.id}`} className="cursor-pointer">
+                    <span className="font-medium">{`【${req.type}】`}</span> {req.text}
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ReactMarkdown>{`${classification.requirements}`}</ReactMarkdown>
+          )}
+        </div>
 
         {classification.nist && (
           <div className="mb-4">
@@ -332,7 +388,7 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
         
         <div className="mt-6 flex justify-end">
           <button
-            onClick={() => onCreateGuideline(classification)}
+            onClick={() => onCreateGuideline(classification, selectedRequirements)}
             className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded flex items-center"
           >
             <FaPlus className="mr-2" /> ガイドラインを作成
