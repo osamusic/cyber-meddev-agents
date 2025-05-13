@@ -18,6 +18,7 @@ class Document(BaseModel):
     doc_id: str
     url: str
     title: str
+    original_title: str  # 元のドキュメント全体のタイトル
     content: str
     source_type: str  # "PDF", "HTML", "DOCX"
     downloaded_at: datetime
