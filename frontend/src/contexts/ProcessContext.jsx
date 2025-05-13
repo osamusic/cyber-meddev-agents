@@ -21,19 +21,7 @@ export const ProcessProvider = ({ children }) => {
     };
   }, []);
 
-  // モーダルの開閉制御
-  useEffect(() => {
-    if (classificationLoading) {
-      setShowProgressModal(true);
-    } else if (
-      classificationProgress?.status === 'completed' ||
-      classificationProgress?.status === 'error'
-    ) {
-      setTimeout(() => {
-        setShowProgressModal(false);
-      }, 3000);
-    }
-  }, [classificationLoading, classificationProgress]);
+
 
   const startClassificationProgressPolling = () => {
     if (pollIntervalRef.current) {
@@ -55,7 +43,7 @@ export const ProcessProvider = ({ children }) => {
         setClassificationError('進捗取得に失敗しました');
         setClassificationLoading(false);
       }
-    }, 2000);
+    }, 5000);
   };
 
   const stopProgressPolling = () => {

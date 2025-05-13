@@ -40,24 +40,28 @@ client = OpenAI(
 max_document_size = os.getenv("MAX_DOCUMENT_SIZE", 4000)
 
 
-def extract_json(raw: str) -> dict:
-    # ```json ... ``` の中を抽出（最優先）
-    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.S)
-    json_text = match.group(1) if match else raw
+def normalize_json(raw):
+    # dictならそのまま返す
+    if isinstance(raw, dict):
+        return raw
 
-    # 前後に余計な文字がついている場合をクリーンアップ
-    json_text = json_text.strip()
+    if not isinstance(raw, str):
+        raise TypeError(f"Expected string or dict, got {type(raw)}")
 
-    # 先頭にゴミ文字がついている場合を削除（例: "y\n { ... }"）
-    json_text = re.sub(r'^[^\{\[]*', '', json_text)  # 最初の { までの文字を除去
-    json_text = re.sub(r'[^\}\]]*$', '', json_text)  # 最後の } のあとを除去
+    # 不要なタグなどを除去
+    raw = raw.strip()
+    raw = re.sub(r"</?response>", "", raw, flags=re.I)
+
+    # 2つ以上のJSONオブジェクトが連結されている場合、最初の { ... } を取り出す
+    json_candidates = re.findall(r"\{.*?\}(?=\s*\{|\s*$)", raw, re.S)
+    if not json_candidates:
+        raise ValueError("No valid JSON object found in raw response.")
 
     try:
-        return json.loads(json_text)
+        return json.loads(json_candidates[0])
     except json.JSONDecodeError as e:
-        # デバッグ用に失敗した場合のログも残す
-        print("JSON parse error:", e)
-        print("Attempted JSON text:", json_text)
+        logger.error("JSON parse error: %s", e)
+        logger.error("Attempted JSON text: %s", json_candidates[0])
         raise
 
 
@@ -181,9 +185,9 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
-            json_text = extract_json(response.choices[0].message.content)
+            json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result
         except json.JSONDecodeError as e:
@@ -285,10 +289,10 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
 
-            json_text = extract_json(response.choices[0].message.content)
+            json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result
         except json.JSONDecodeError as e:
@@ -362,9 +366,9 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
-            json_text = extract_json(response.choices[0].message.content)
+            json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result.get("keywords", [])
         except Exception as e:
@@ -400,8 +404,6 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"},
-                max_tokens=2000
             )
 
             return response.choices[0].message.content.strip()

@@ -218,7 +218,6 @@ const AdminDashboard = () => {
         <ClassificationForm 
           onClassifyComplete={() => {
             fetchStats();
-            setShowClassificationForm(false);
           }}
         />
       )}

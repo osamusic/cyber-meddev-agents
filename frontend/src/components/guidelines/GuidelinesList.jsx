@@ -5,6 +5,8 @@ import axiosClient from '../../api/axiosClient';
 import { FaChevronDown } from 'react-icons/fa';
 import { FaChevronRight } from 'react-icons/fa';
 import { FaPlus } from 'react-icons/fa';
+import ReactMarkdown from 'react-markdown';
+
 
 const GuidelinesList = () => {
   const [guidelines, setGuidelines] = useState([]);
@@ -264,11 +266,8 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
           <p><span className="font-medium">作成日時:</span> {new Date(classification.created_at).toLocaleString('ja-JP')}</p>
         </div>
         
-        <div className="mb-4">
-          <h4 className="text-lg font-medium mb-2">要約</h4>
-          <p className="text-gray-700">{classification.summary}</p>
-        </div>
-        
+        <ReactMarkdown>{`**要件**\n\n${classification.summary}`}</ReactMarkdown>
+
         {classification.nist && (
           <div className="mb-4">
             <h4 className="text-lg font-medium mb-2">NIST CSF分類</h4>
