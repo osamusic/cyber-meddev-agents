@@ -471,7 +471,9 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
                       
                       {classification.requirements && (
                         <p className="text-sm text-gray-600 mt-2 line-clamp-2">
-                          {classification.requirements}
+                          {Array.isArray(classification.requirements) 
+                            ? classification.requirements.map(req => `【${req.type}】${req.text}`).slice(0, 2).join(', ') + (classification.requirements.length > 2 ? '...' : '')
+                            : classification.requirements}
                         </p>
                       )}
                     </div>
@@ -643,7 +645,9 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
                   {guideline.classification.requirements && (
                     <div className="mt-2">
                       <p className="text-sm text-gray-600 italic line-clamp-2">
-                        &quot;{guideline.classification.requirements}&quot;
+                        &quot;{Array.isArray(guideline.classification.requirements) 
+                          ? guideline.classification.requirements.map(req => `【${req.type}】${req.text}`).slice(0, 2).join(', ') + (guideline.classification.requirements.length > 2 ? '...' : '')
+                          : guideline.classification.requirements}&quot;
                       </p>
                     </div>
                   )}
