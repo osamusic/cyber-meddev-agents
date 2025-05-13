@@ -17,6 +17,7 @@ from llama_index.llms.openai import OpenAI
 from llama_index.llms.openrouter import OpenRouter
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core.node_parser import SimpleNodeParser
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from .models import IndexConfig, IndexStats
 
@@ -31,19 +32,21 @@ if os.getenv("OPENROUTER_API_KEY"):
     MODEL = "deepseek/deepseek-r1:free"
     logger.info(f"Using OpenRouter model: {MODEL}")
     Settings.llm = OpenRouter(model=MODEL)
+    Settings.embed_model = HuggingFaceEmbedding()
 else:
     openai.api_key = os.getenv("OPENAI_API_KEY")
     openai.api_type = "openai"
     MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     logger.info(f"Using OpenAI model: {MODEL}")
     Settings.llm = OpenAI(model=MODEL)
+    Settings.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
 
 if not openai.api_key:
     logger.warning("API_KEY environment variable not set")
 
 
 # グローバルな既定値を設定
-Settings.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
+
 Settings.node_parser = SimpleNodeParser(chunk_size=256, chunk_overlap=20)
 Settings.num_output = 512
 Settings.context_window = os.getenv("MAX_DOCUMENT_SIZE", 4000)
