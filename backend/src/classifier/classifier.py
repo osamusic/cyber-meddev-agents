@@ -37,32 +37,29 @@ client = OpenAI(
     base_url=API_URL,
 )
 
-max_document_size = os.getenv("MAX_DOCUMENT_SIZE", 4000)
+max_document_size = os.getenv("MAX_DOCUMENT_SIZE", 3000)
 
 
-def normalize_json(raw):
-    # dictならそのまま返す
-    if isinstance(raw, dict):
-        return raw
-
-    if not isinstance(raw, str):
-        raise TypeError(f"Expected string or dict, got {type(raw)}")
-
-    # 不要なタグなどを除去
-    raw = raw.strip()
-    raw = re.sub(r"</?response>", "", raw, flags=re.I)
-
-    # 2つ以上のJSONオブジェクトが連結されている場合、最初の { ... } を取り出す
-    json_candidates = re.findall(r"\{.*?\}(?=\s*\{|\s*$)", raw, re.S)
-    if not json_candidates:
-        raise ValueError("No valid JSON object found in raw response.")
-
+def normalize_json(raw: str) -> str:
+    """
+    JSON風の文字列から有効なJSON部分だけを抽出し、キーの修正も行う。
+    """
     try:
-        return json.loads(json_candidates[0])
-    except json.JSONDecodeError as e:
-        logger.error("JSON parse error: %s", e)
-        logger.error("Attempted JSON text: %s", json_candidates[0])
-        raise
+        # JSON部分だけを切り出す
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start == -1 or end == -1:
+            raise ValueError("Braces not found")
+
+        json_candidate = raw[start:end]
+
+        # 最後に } } が重複していれば1つに
+        json_candidate = re.sub(r"\}\s*\}\s*$", "}", json_candidate)
+
+        return json_candidate
+
+    except Exception as e:
+        raise json.JSONDecodeError("No valid JSON object found in raw response.", raw, 0)
 
 
 class DocumentClassifier:
@@ -98,33 +95,53 @@ class DocumentClassifier:
             "timestamp": datetime.now().isoformat(),
             "frameworks": {},
             "keywords": [],
-            "summary": "",
-            "intermediate_results": {}  # 中間結果を保存するための新しいフィールド
+            "requirements": "",
         }
-
-        intermediate_results = {}
-
-        for framework in frameworks:
-            if framework == "NIST_CSF":
-                nist_result = self._classify_nist(document_text)
-                result["frameworks"]["NIST_CSF"] = nist_result
-                intermediate_results["NIST_CSF_raw"] = nist_result  # 中間結果を保存
-            elif framework == "IEC_62443":
-                iec_result = self._classify_iec(document_text)
-                result["frameworks"]["IEC_62443"] = iec_result
-                intermediate_results["IEC_62443_raw"] = iec_result  # 中間結果を保存
-
-        keywords = self._extract_keywords(document_text, config.keyword_config)
+        extracts = self._extract_document(document_text)
+        result["requirements"] = extracts
+        nist_result = self._classify_nist(extracts)
+        result["frameworks"]["NIST_CSF"] = nist_result
+        iec_result = self._classify_iec(extracts)
+        result["frameworks"]["IEC_62443"] = iec_result
+        keywords = self._extract_keywords(extracts, config.keyword_config)
         result["keywords"] = keywords
-        intermediate_results["keywords_raw"] = keywords  # 中間結果を保存
-
-        summary = self._summarize_document(document_text)
-        result["summary"] = summary
-        intermediate_results["summary_raw"] = summary  # 中間結果を保存
-
-        result["intermediate_results"] = intermediate_results
 
         return result
+
+    def _extract_document(self, document_text: str) -> str:
+        """セキュリティ要件の抽出"""
+        prompt = f"""
+        あなたは医療機器サイバーセキュリティの専門家です。
+        以下のテキストには、セキュリティ対策に関する「推奨事項」および「必須要件（義務）」が含まれています。  
+        この中から、セキュリティ上の**要求事項（セキュリティ対策）**を読み取り、以下の形式でリストアップしてください。
+        - 「必須」か「推奨」かを明記してください
+        - 原文の要点を簡潔にまとめてください（引用ではなく、整理された要求文として）
+
+        テキスト:
+        {document_text[:max_document_size]}
+
+        ## 出力形式（例）:
+        1. 【必須】ユーザー認証には多要素認証を用いること  
+        2. 【推奨】外部インターフェースにはファイアウォールを設置すること  
+        3. 【必須】ログは改ざん検知が可能な形式で保存すること
+        """
+
+        try:
+            response = client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "あなたは医療機器サイバーセキュリティの専門家です。"
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"抽出エラー: {str(e)}")
+            return f"抽出中にエラーが発生しました: {str(e)}"
 
     def _classify_nist(self, document_text: str) -> Dict[str, Any]:
         """NISTサイバーセキュリティフレームワークに基づいて分類"""
@@ -145,8 +162,7 @@ class DocumentClassifier:
         各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
 
-        以下のJSON形式で回答してください。有効なJSONのみを返してください。
-        特に余分なテキスト、説明、コンマの使用に注意してください:
+        以下のJSON形式を1つだけ回答してください。有効なJSONのみを返してください。
         {{
             "categories": {{
                 "ID": {{
@@ -173,7 +189,6 @@ class DocumentClassifier:
             "primary_category": "最も関連性の高いカテゴリコード",
             "explanation": "全体的な分析と判断理由の要約"
         }}
-
         必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
 
@@ -185,7 +200,7 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"},
+                # response_format={"type": "json_object"},
             )
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
@@ -227,13 +242,13 @@ class DocumentClassifier:
         以下のテキストを分析し、IEC 62443の基本要件（Foundational Requirements）に日本語で分類してください。
 
         IEC 62443の基本要件（Foundational Requirements）:
-        - FR1: Identification and authentication control (識別と認証制御) - ユーザー／デバイスの識別、認証、なりすまし防止
-        - FR2: Use control (使用制御) - 最小権限、アクセス制御、操作制限
-        - FR3: System integrity (システム完全性) - 改ざん防止、ソフトウェア整合性、マルウェア対策
-        - FR4: Data confidentiality（データ機密性） - データ暗号化、アクセス制御、情報漏洩対策
-        - FR5: Restricted data flow（制限されたデータフロー） - 通信経路の制限、ファイアーウォール、ネットワーク分離
-        - FR6: Timely response to events（イベントへのタイムリーな対応） - インシデント検知、ログ監視、インシデント対応
-        - FR7: Resource availability（リソース可用性） - サービス継続性、DoS対策、バックアップ
+        - FR1: Identification and authentication control (識別と認証制御)
+        - FR2: Use control (使用制御)
+        - FR3: System integrity (システム完全性)
+        - FR4: Data confidentiality（データ機密性）
+        - FR5: Restricted data flow（制限されたデータフロー）
+        - FR6: Timely response to events（イベントへのタイムリーな対応）
+        - FR7: Resource availability（リソース可用性）
 
         テキスト:
         {document_text[:max_document_size]}
@@ -241,8 +256,7 @@ class DocumentClassifier:
         各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
         また、その判断理由を簡潔に説明してください。
 
-        以下のJSON形式で回答してください。有効なJSONのみを返してください。
-        特に余分なテキスト、説明、コンマの使用に注意してください:
+        以下のJSON形式を1つだけ回答してください。有効なJSONのみを返してください。
         {{
             "requirements": {{
                 "FR1": {{
@@ -277,7 +291,6 @@ class DocumentClassifier:
             "primary_requirement": "最も関連性の高い要件コード",
             "explanation": "全体的な分析と判断理由の要約"
         }}
-
         必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
         """
 
@@ -289,9 +302,8 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"},
+                # response_format={"type": "json_object"},
             )
-
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result
@@ -366,7 +378,7 @@ class DocumentClassifier:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"},
+                # response_format={"type": "json_object"},
             )
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
@@ -374,39 +386,3 @@ class DocumentClassifier:
         except Exception as e:
             logger.error(f"キーワード抽出エラー: {str(e)}")
             return [{"keyword": "エラー", "importance": 0, "description": f"キーワード抽出中にエラーが発生しました: {str(e)}"}]
-
-    def _summarize_document(self, document_text: str) -> str:
-        """セキュリティ要件の抽出"""
-        prompt = f"""
-        あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストには、セキュリティ対策に関する「推奨事項」および「必須要件（義務）」が含まれています。  
-        この中から、セキュリティ上の**要求事項（セキュリティ対策）**を読み取り、以下の形式でリストアップしてください。
-        - 「必須」か「推奨」かを明記してください
-        - 原文の要点を簡潔にまとめてください（引用ではなく、整理された要求文として）
-
-        テキスト:
-        {document_text[:max_document_size]}
-
-        ## 出力形式（例）:
-        1. 【必須】ユーザー認証には多要素認証を用いること  
-        2. 【推奨】外部インターフェースにはファイアウォールを設置すること  
-        3. 【必須】ログは改ざん検知が可能な形式で保存すること
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model=self.openai_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "あなたは医療機器サイバーセキュリティの専門家です。"
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-            )
-
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            logger.error(f"要約エラー: {str(e)}")
-            return f"要約中にエラーが発生しました: {str(e)}"

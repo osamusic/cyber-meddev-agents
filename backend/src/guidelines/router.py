@@ -33,7 +33,7 @@ def get_classification_data(guideline_id: int, db: SQLAlchemySession) -> Optiona
 
         classification_data = {
             "created_at": classification.created_at.isoformat(),
-            "summary": result.get("summary", ""),
+            "requirements": result.get("requirements", ""),
             "keywords": result.get("keywords", []),
         }
 

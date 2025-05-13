@@ -188,7 +188,7 @@ const GuidelinesList = () => {
         guideline_id: guidelineId,
         category: nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom'),
         standard: nistCategory || iecRequirement || 'Custom',
-        control_text: classification.summary || '分類結果から生成されたガイドライン',
+        control_text: classification.requirements || '分類結果から生成されたガイドライン',
         source_url: documentUrl,
         region: 'International',
         keywords: processedKeywords
@@ -266,7 +266,7 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
           <p><span className="font-medium">作成日時:</span> {new Date(classification.created_at).toLocaleString('ja-JP')}</p>
         </div>
         
-        <ReactMarkdown>{`**要件**\n\n${classification.summary}`}</ReactMarkdown>
+        <ReactMarkdown>{`**要件**\n\n${classification.requirements}`}</ReactMarkdown>
 
         {classification.nist && (
           <div className="mb-4">
@@ -413,9 +413,9 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
                         )}
                       </div>
                       
-                      {classification.summary && (
+                      {classification.requirements && (
                         <p className="text-sm text-gray-600 mt-2 line-clamp-2">
-                          {classification.summary}
+                          {classification.requirements}
                         </p>
                       )}
                     </div>
@@ -584,10 +584,10 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
                       </span>
                     )}
                   </div>
-                  {guideline.classification.summary && (
+                  {guideline.classification.requirements && (
                     <div className="mt-2">
                       <p className="text-sm text-gray-600 italic line-clamp-2">
-                        &quot;{guideline.classification.summary}&quot;
+                        &quot;{guideline.classification.requirements}&quot;
                       </p>
                     </div>
                   )}

@@ -259,7 +259,7 @@ async def get_all_classifications(
                 "document_title": document.title if document else "不明なドキュメント",
                 "source_url": document.source_url if document and hasattr(document, 'source_url') else "",
                 "created_at": classification.created_at.isoformat(),
-                "summary": result_json.get("summary", ""),
+                "requirements": result_json.get("requirements", ""),
                 "keywords": result_json.get("keywords", []),
             }
 

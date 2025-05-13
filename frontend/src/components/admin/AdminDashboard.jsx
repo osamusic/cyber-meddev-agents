@@ -15,7 +15,7 @@ const AdminDashboard = () => {
       last_updated: null
     }
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showCrawlerForm, setShowCrawlerForm] = useState(false);
   const [showClassificationForm, setShowClassificationForm] = useState(false);
@@ -59,9 +59,9 @@ const AdminDashboard = () => {
       setLoading(true);
       
       const [usersRes, guidelinesRes, indexStatsRes] = await Promise.all([
-        axiosClient.get('/admin/users'),
-        axiosClient.get('/guidelines'),
-        axiosClient.get('/index/stats')
+        axiosClient.get('/admin/users', { timeout: 1000 }),
+        axiosClient.get('/guidelines', { timeout: 1000 }),
+        axiosClient.get('/index/stats', { timeout: 1000 })
       ]);
       
       setStats({
@@ -208,8 +208,8 @@ const AdminDashboard = () => {
       {showCrawlerForm && (
         <CrawlerForm 
           onCrawlComplete={() => {
-            fetchStats();
             setShowCrawlerForm(false);
+            fetchStats();
           }}
         />
       )}
@@ -217,6 +217,7 @@ const AdminDashboard = () => {
       {showClassificationForm && (
         <ClassificationForm 
           onClassifyComplete={() => {
+            setShowClassificationForm(false);
             fetchStats();
           }}
         />

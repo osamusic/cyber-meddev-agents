@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
+import bcrypt
+from datetime import datetime
+import json
+from src.db.models import User, DocumentModel, Guideline, GuidelineKeyword, ClassificationResult
+from src.db.database import engine, get_db
+from sqlalchemy.orm import Session
 import sys
 import os
 
 # Add the parent directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from sqlalchemy.orm import Session
-from src.db.database import engine, get_db
-from src.db.models import User, DocumentModel, Guideline, GuidelineKeyword, ClassificationResult
-import json
-from datetime import datetime
-import bcrypt
 
 def get_password_hash(password: str) -> str:
     """Generate a password hash using bcrypt."""
@@ -18,15 +18,16 @@ def get_password_hash(password: str) -> str:
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
     return hashed_password.decode('utf-8')
 
+
 def create_dummy_data():
     db = next(get_db())
-    
+
     # Check if guidelines already exist
     existing_guidelines = db.query(Guideline).count()
     if existing_guidelines > 0:
         print("Guidelines already exist. Skipping dummy data creation.")
         return
-    
+
     # Create dummy admin user
     admin_user = User(
         username="admin",
@@ -36,7 +37,7 @@ def create_dummy_data():
     db.add(admin_user)
     db.commit()
     print("Created dummy admin user")
-    
+
     # Create dummy document
     document = DocumentModel(
         doc_id="dummy-doc-1",
@@ -51,7 +52,7 @@ def create_dummy_data():
     db.add(document)
     db.commit()
     print("Created dummy document")
-    
+
     # Create dummy guidelines
     guidelines = [
         {
@@ -100,33 +101,33 @@ def create_dummy_data():
             "keywords": ["医療機器", "サイバーセキュリティ", "FDA"]
         }
     ]
-    
+
     created_guidelines = []
-    
+
     for guideline_data in guidelines:
         keywords = guideline_data.pop("keywords")
-        
+
         guideline = Guideline(**guideline_data)
         db.add(guideline)
         db.flush()  # Flush to get the ID
-        
+
         for keyword in keywords:
             keyword_obj = GuidelineKeyword(
                 guideline_id=guideline.id,
                 keyword=keyword
             )
             db.add(keyword_obj)
-        
+
         created_guidelines.append(guideline)
-    
+
     db.commit()
-    
+
     # Create classification results for each guideline
     for guideline in created_guidelines:
         # Create a dummy classification result that matches the guideline
         nist_result = {}
         iec_result = {}
-        
+
         if "NIST" in guideline.category:
             nist_result = {
                 "categories": {
@@ -166,7 +167,7 @@ def create_dummy_data():
                 "primary_category": "PR",
                 "explanation": "このドキュメントは主に保護に関する内容が含まれています。"
             }
-            
+
             iec_result = {
                 "requirements": {
                     "FR1": {"score": 5, "reason": "識別と認証管理に関する内容が一部含まれています。"},
@@ -180,7 +181,7 @@ def create_dummy_data():
                 "primary_requirement": "FR3",
                 "explanation": "このドキュメントは主にシステム整合性に関する内容が含まれています。"
             }
-        
+
         # Create the classification result
         classification_result = ClassificationResult(
             document_id=document.id,  # Use document.id as document_id
@@ -193,20 +194,15 @@ def create_dummy_data():
                     "IEC_62443": iec_result
                 },
                 "keywords": [keyword for keyword in keywords],
-                "summary": f"これは{guideline.standard}に関するガイドラインです。{guideline.control_text}について説明しています。",
-                "intermediate_results": {
-                    "NIST_CSF_raw": nist_result,
-                    "IEC_62443_raw": iec_result,
-                    "keywords_raw": [keyword for keyword in keywords],
-                    "summary_raw": f"これは{guideline.standard}に関するガイドラインです。{guideline.control_text}について説明しています。"
-                }
+                "requirements": f"これは{guideline.standard}に関するガイドラインです。{guideline.control_text}について説明しています。",
             }, ensure_ascii=False)
         )
         db.add(classification_result)
-    
+
     db.commit()
     print("Created dummy guidelines and classification results")
     print("Dummy data creation completed")
+
 
 if __name__ == "__main__":
     create_dummy_data()
