@@ -25,7 +25,6 @@ const ClassificationForm = ({ onClassifyComplete }) => {
         setDocuments(response.data);
       } catch (err) {
         console.error('Error fetching documents:', err);
-        setError('ドキュメントの取得中にエラーが発生しました');
       }
     };
     
