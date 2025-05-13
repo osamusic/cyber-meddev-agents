@@ -50,16 +50,13 @@ def normalize_json(raw: str) -> str:
         end = raw.rfind("}") + 1
         if start == -1 or end == -1:
             raise ValueError("Braces not found")
-
         json_candidate = raw[start:end]
-
         # 最後に } } が重複していれば1つに
         json_candidate = re.sub(r"\}\s*\}\s*$", "}", json_candidate)
-
         return json_candidate
-
     except Exception as e:
-        raise json.JSONDecodeError("No valid JSON object found in raw response.", raw, 0)
+        logger.error(f"JSON正規化エラー: {str(e)}")
+        return raw  # 失敗した場合はそのまま返す
 
 
 class DocumentClassifier:
@@ -99,19 +96,16 @@ class DocumentClassifier:
         }
         requirements_list = self._extract_document(document_text)
         result["requirements"] = requirements_list
-
         requirements_text = ""
         if requirements_list:
             requirements_text = "\n".join([f"{item.get('id', i + 1)}. 【{item.get('type', '必須')}】{item.get('text', '')}"
                                            for i, item in enumerate(requirements_list)])
-
         nist_result = self._classify_nist(requirements_text or document_text)
         result["frameworks"]["NIST_CSF"] = nist_result
         iec_result = self._classify_iec(requirements_text or document_text)
         result["frameworks"]["IEC_62443"] = iec_result
         keywords = self._extract_keywords(requirements_text or document_text, config.keyword_config)
         result["keywords"] = keywords
-
         return result
 
     def _extract_document(self, document_text: str) -> List[Dict[str, Any]]:
@@ -122,10 +116,8 @@ class DocumentClassifier:
         この中から、セキュリティ上の**要求事項（セキュリティ対策）**を読み取り、以下の形式でリストアップしてください。
         - 「必須」か「推奨」かを判断してください
         - 原文の要点を簡潔にまとめてください（引用ではなく、整理された要求文として）
-
         テキスト:
         {document_text[:max_document_size]}
-
         以下のJSON形式で回答してください。有効なJSONのみを返してください:
         {{
             "requirements": [

@@ -23,9 +23,7 @@ async def get_all_documents(
 ):
     """Get all documents (admin only)"""
     classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
-    
     documents = db.query(DocumentModel).offset(skip).limit(limit).all()
-    
     result = []
     for doc in documents:
         doc_dict = vars(doc)
@@ -33,7 +31,6 @@ async def get_all_documents(
             classified_doc_ids.c.document_id == doc.id
         ).first() is not None
         result.append(doc_dict)
-    
     return result
 
 
