@@ -292,8 +292,12 @@ class Crawler:
                         content += f"[PAGE_{page_num}]\n{page_text}\n[/PAGE_{page_num}]\n"
 
                     metadata = pdf_document.metadata
+                    original_title = None
                     if metadata.get('title') and metadata.get('title').strip():
                         title = metadata.get('title')
+                        original_title = metadata.get('title')
+                    else:
+                        original_title = url.split('/')[-1]
 
                     pdf_document.close()
 
@@ -305,6 +309,7 @@ class Crawler:
                     logger.error(f"Error extracting content from PDF {url}: {str(e)}")
                     content = f"Failed to extract content from PDF at {url}: {str(e)}"
                     toc_info = None
+                    original_title = url.split('/')[-1]  # エラー時もオリジナルタイトルを設定
 
                 source_type = "PDF"
 
@@ -313,9 +318,10 @@ class Crawler:
                 content = f"Content from {url} - format {content_type}"
                 source_type = content_type.split('/')[-1].upper()
                 toc_info = None
+                original_title = title  # PDF以外の場合もオリジナルタイトルを設定
 
             title_str = str(title) if title is not None else url
-            original_title_str = title_str
+            original_title_str = str(original_title) if original_title is not None else url
 
             return self._split_document(
                 content=content,
