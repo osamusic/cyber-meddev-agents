@@ -297,8 +297,6 @@ def classify_documents_background(
 
     db = SessionLocal()
     try:
-        # Update status to in_progress
-        global classification_progress
         classification_progress["status"] = "in_progress"
 
         for idx, doc_id in enumerate(documents):
@@ -338,9 +336,6 @@ def classify_documents_background(
 async def get_classification_progress(
     current_user: User = Depends(get_current_active_user),
 ):
-    """ドキュメント分類の進捗状況を取得"""
-    global classification_progress
-
     return ClassificationResult(
         processed_count=classification_progress["total_documents"],
         categories_count={},
