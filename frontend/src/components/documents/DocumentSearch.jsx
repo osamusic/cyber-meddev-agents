@@ -3,6 +3,7 @@ import axiosClient from '../../api/axiosClient';
 import { FaSearch } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 
+
 const DocumentSearch = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -192,7 +193,11 @@ const DocumentSearch = () => {
               </div>
               
               <div className="mt-2 text-gray-700">
-                <ReactMarkdown>{result.text}</ReactMarkdown>
+                <ReactMarkdown
+                  components={{
+                    p: ({ node, children }) => <p style={{ whiteSpace: 'pre-wrap' }}>{children}</p>
+                  }}
+                >{result.text}</ReactMarkdown>
               </div>
               
               {result.metadata?.url && (

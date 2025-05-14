@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import openai
@@ -195,30 +196,84 @@ class DocumentIndexer:
             logger.error(f"Error indexing documents: {str(e)}")
             raise
 
+    def to_markdown(self, text: str) -> str:
+        lines = text.splitlines()
+        md_lines = []
+
+        for line in lines:
+            line = line.strip()
+
+            if not line:
+                md_lines.append("")
+                continue
+
+            # [SECTION: Xxxx] → ### SECTION: Xxxx
+            section_match = re.match(r"\[SECTION:\s*(.*?)\]", line)
+            if section_match:
+                md_lines.append(f"### SECTION: {section_match.group(1)}")
+                continue
+
+            # [PAGE_15] → Markdown見出し
+            if re.match(r"^\[PAGE_[0-9]+\]", line):
+                md_lines.append(f"### {line.strip('[]')}")
+                continue
+
+            # 見出し番号（例: 5.4 Title）
+            if re.match(r"^\d+(\.\d+)*\s+[A-Z].*", line):
+                md_lines.append(f"### {line}")
+                continue
+
+            # サブ見出し番号（例: 5.5.1 Labeling）
+            if re.match(r"^\d+\.\d+\.\d+\s+.*", line):
+                md_lines.append(f"#### {line}")
+                continue
+
+            #  のような箇条書き
+            if line.startswith(""):
+                md_lines.append(f"- {line[1:].strip()}")
+                continue
+
+            # • のような箇条書き
+            if line.startswith(" • "):
+                md_lines.append(f"- {line[1:].strip()}")
+                continue
+
+            # : で終わる見出し風の行 → 強調
+            if re.match(r"^[A-Za-z\s]+:$", line):
+                md_lines.append(f"**{line.strip()}**")
+                continue
+
+            # URL
+            if "http" in line:
+                md_lines.append(f"> ({line.strip()})")
+                continue
+
+            # 通常文・改行補助
+            md_lines.append(line)
+
+        return "\n".join(md_lines)
+
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search the index for documents matching the query"""
         if not self.index:
             logger.warning("No index available for search")
             return []
-
         query_engine = self.index.as_query_engine(similarity_top_k=top_k)
-
         response = query_engine.query(query)
-
         results = []
-        for node in response.source_nodes:
+        for scored_node in response.source_nodes:
+            node = scored_node.node
             try:
-                text = node.text
-            except ValueError:
-                logger.warning(f"Node is not a TextNode, using fallback text. Node type: {type(node)}")
+                text = node.get_content()
+            except Exception as e:
+                logger.warning(f"Failed to extract content from node. Node type: {type(node)}; Error: {str(e)}")
                 text = "No text content available for this node"
-            
-            results.append({
-                "text": text,
-                "score": node.score,
-                "metadata": node.metadata
-            })
 
+            results.append({
+                "text": self.to_markdown(text),
+                "score": scored_node.score,
+                "metadata": getattr(node, "metadata", {})
+            })
         return results
 
     def get_stats(self) -> IndexStats:
