@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
       formData.append('username', username);
       formData.append('password', password);
       
-      const response = await axiosClient.post('/auth/token', formData.toString(), {
+      const response = await axiosClient.post('/token', formData.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
@@ -88,7 +88,7 @@ export const AuthProvider = ({ children }) => {
         registerData.admin_code = adminCode;
       }
       
-      await axiosClient.post('/auth/register', registerData);
+      await axiosClient.post('/register', registerData);
       
       return await login(username, password);
     } catch (err) {
