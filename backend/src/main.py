@@ -7,7 +7,7 @@ from .auth.auth import get_current_active_user
 from .auth.router import router as auth_router
 from .db.models import Base
 from .db.database import engine
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -16,7 +16,10 @@ load_dotenv()
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="医療機器サイバーセキュリティ専門家システム")
+app = FastAPI(
+    title="医療機器サイバーセキュリティ専門家システム",
+    dependencies=[Depends(get_current_active_user)]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,17 +29,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router, prefix="/auth")
+public_router = APIRouter()
+
+@public_router.get("/")
+def read_root():
+    return {"message": "Cyber-Med-Agent Backend is running"}
+
+app.include_router(public_router)
+app.include_router(auth_router)
 app.include_router(guidelines_router)
 app.include_router(admin_router)
 app.include_router(indexer_router)
 app.include_router(crawler_router)
 app.include_router(classifier_router)
 
-
-@app.get("/")
-def read_root():
-    return {"message": "Cyber-Med-Agent Backend is running"}
 
 
 @app.get("/me")
