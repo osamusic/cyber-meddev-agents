@@ -22,6 +22,7 @@ class DocumentInfo(BaseModel):
     source_type: str
     downloaded_at: datetime
     url: str
+    original_title: Optional[str] = None  # 元のドキュメント全体のタイトル
     is_classified: bool = False  # ドキュメントが既に分類されているかどうか
 
     class Config:
