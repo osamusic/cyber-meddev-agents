@@ -5,7 +5,7 @@ from datetime import datetime
 
 from ..db.database import get_db
 from ..db.models import DocumentModel, User as UserModel, ClassificationResult as DBClassificationResult
-from ..auth.auth import get_admin_user
+from ..auth.auth import get_admin_user, get_current_user
 from .models import DocumentInfo, DeleteConfirmation
 
 router = APIRouter(
@@ -32,6 +32,29 @@ async def get_all_documents(
         ).first() is not None
         result.append(doc_dict)
     return result
+
+
+@router.get("/documents/{document_id}", response_model=DocumentInfo)
+async def get_document_by_id(
+    document_id: int,
+    db: SQLAlchemySession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Get document by ID (accessible to all authenticated users)"""
+    document = db.query(DocumentModel).filter(DocumentModel.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ドキュメントID '{document_id}' が見つかりません"
+        )
+
+    doc_dict = vars(document)
+    classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
+    doc_dict["is_classified"] = db.query(classified_doc_ids.c.document_id).filter(
+        classified_doc_ids.c.document_id == document.id
+    ).first() is not None
+
+    return doc_dict
 
 
 @router.delete("/documents/{doc_id}")
