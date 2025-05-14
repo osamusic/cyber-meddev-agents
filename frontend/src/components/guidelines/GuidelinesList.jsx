@@ -154,11 +154,23 @@ const GuidelinesList = () => {
     }
   };
 
-  const resetFilters = () => {
+  const resetFilters = async () => {
     setSelectedCategory('');
     setSelectedStandard('');
     setSelectedRegion('');
     setSearchQuery('');
+    setIsSearching(true);
+    
+    try {
+      const response = await axiosClient.get('/guidelines');
+      setGuidelines(response.data || []);
+      setError(null);
+    } catch (err) {
+      console.error('フィルターリセットエラー:', err);
+      setError('ガイドラインデータの再取得中にエラーが発生しました。');
+    } finally {
+      setIsSearching(false);
+    }
   };
   
   const handleDeleteGuideline = async (guideline) => {
@@ -316,8 +328,25 @@ const GuidelinesList = () => {
   
 const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) => {
     const [selectedRequirements, setSelectedRequirements] = useState([]);
+    const [isAdmin, setIsAdmin] = useState(false);
+    
+    useEffect(() => {
+      const checkIsAdmin = async () => {
+        try {
+          const response = await axiosClient.get('/me');
+          setIsAdmin(response.data.is_admin);
+        } catch (err) {
+          console.error('Error checking admin status:', err);
+          setIsAdmin(false);
+        }
+      };
+      
+      checkIsAdmin();
+    }, []);
     
     const toggleRequirement = (reqId) => {
+      if (!isAdmin) return; // 管理者以外は変更不可
+      
       if (selectedRequirements.includes(reqId)) {
         setSelectedRequirements(selectedRequirements.filter(id => id !== reqId));
       } else {
@@ -363,8 +392,12 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
                     className="mt-1 mr-2"
                     checked={selectedRequirements.includes(req.id)}
                     onChange={() => toggleRequirement(req.id)}
+                    disabled={!isAdmin}
                   />
-                  <label htmlFor={`req-${req.id}`} className="cursor-pointer">
+                  <label 
+                    htmlFor={`req-${req.id}`} 
+                    className={`${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                  >
                     <span className="font-medium">{`【${req.type}】`}</span> {req.text}
                   </label>
                 </div>
@@ -440,7 +473,11 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
         <div className="mt-6 flex justify-end">
           <button
             onClick={() => onCreateGuideline(classification, selectedRequirements)}
-            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded flex items-center"
+            className={`${isAdmin 
+              ? 'bg-green-600 hover:bg-green-700' 
+              : 'bg-gray-400 cursor-not-allowed'} text-white font-medium py-2 px-4 rounded flex items-center`}
+            disabled={!isAdmin}
+            title={!isAdmin ? "管理者権限が必要です" : ""}
           >
             <FaPlus className="mr-2" /> ガイドラインを作成
           </button>
