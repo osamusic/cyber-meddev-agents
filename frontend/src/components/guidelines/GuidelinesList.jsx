@@ -110,7 +110,7 @@ const GuidelinesList = () => {
   useEffect(() => {
     const checkIsAdmin = async () => {
       try {
-        const response = await axiosClient.get('/users/me');
+        const response = await axiosClient.get('/me');
         setIsAdmin(response.data.is_admin);
       } catch (err) {
         console.error('Error checking admin status:', err);
