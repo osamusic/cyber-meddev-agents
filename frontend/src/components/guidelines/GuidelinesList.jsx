@@ -205,15 +205,18 @@ const GuidelinesList = () => {
 
   const createGuidelineFromClassification = async (classification, selectedReqs = []) => {
     if (!classification) return;
-    
+
     try {
-      const nistCategory = classification.nist?.primary_category || '';
-      const iecRequirement = classification.iec?.primary_requirement || '';
+      const nistCategory = classification.nist?.primary_category
+        ? `NIST : ${classification.nist.primary_category}` : '';
+      const iecRequirement = classification.iec?.primary_requirement
+        ? `IEC62443 : ${classification.iec?.primary_requirement}` : '';
       const keywords = classification.keywords || [];
       const processedKeywords = keywords.map(keyword => 
         typeof keyword === 'object' ? keyword.keyword : keyword
       );
-      
+
+      const categories = [nistCategory, iecRequirement].filter(Boolean).join(' / ');
       const guidelineId = String(classification.document_id);
       
       let controlText = '';
@@ -237,22 +240,22 @@ const GuidelinesList = () => {
       let documentUrl = '';
       let originalTitle = '';
       try {
-        const documentResponse = await axiosClient.get(`/documents/${classification.document_id}`);
-        documentUrl = documentResponse.data.source_url || '';
+        const documentResponse = await axiosClient.get(`/admin/documents/${classification.document_id}`);
+        documentUrl = documentResponse.data.url || '';
         originalTitle = documentResponse.data.original_title || '';
         
         if (!originalTitle) {
-          originalTitle = documentResponse.data.title || (nistCategory || iecRequirement || 'Custom');
+          originalTitle = documentResponse.data.title;
         }
       } catch (docErr) {
         console.warn('ドキュメント情報取得エラー:', docErr);
-        documentUrl = '';
-        originalTitle = nistCategory || iecRequirement || 'Custom';
+        documentUrl = 'Error';
+        originalTitle = 'Error';
       }
       
       const guidelineData = {
         guideline_id: guidelineId,
-        category: nistCategory && iecRequirement ? `NIST CSF, IEC 62443` : (nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom')),
+        category: categories,
         standard: originalTitle,
         control_text: controlText,
         source_url: documentUrl,
