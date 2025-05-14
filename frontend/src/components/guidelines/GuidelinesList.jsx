@@ -166,14 +166,7 @@ const GuidelinesList = () => {
         typeof keyword === 'object' ? keyword.keyword : keyword
       );
       
-      let guidelineId = '';
-      if (nistCategory) {
-        guidelineId = `NIST-CSF-${nistCategory}`;
-      } else if (iecRequirement) {
-        guidelineId = `IEC-62443-${iecRequirement}`;
-      } else {
-        guidelineId = `CUSTOM-${Date.now()}`;
-      }
+      const guidelineId = String(classification.document_id);
       
       let controlText = '';
       if (Array.isArray(classification.requirements)) {
@@ -192,20 +185,27 @@ const GuidelinesList = () => {
         controlText = classification.requirements || '分類結果から生成されたガイドライン';
       }
       
-      // source_urlをDBから取得
+      // source_urlとoriginal_titleをDBから取得
       let documentUrl = '';
+      let originalTitle = '';
       try {
         const documentResponse = await axiosClient.get(`/documents/${classification.document_id}`);
         documentUrl = documentResponse.data.source_url || '';
+        originalTitle = documentResponse.data.original_title || '';
+        
+        if (!originalTitle) {
+          originalTitle = documentResponse.data.title || (nistCategory || iecRequirement || 'Custom');
+        }
       } catch (docErr) {
         console.warn('ドキュメント情報取得エラー:', docErr);
         documentUrl = '';
+        originalTitle = nistCategory || iecRequirement || 'Custom';
       }
       
       const guidelineData = {
         guideline_id: guidelineId,
-        category: nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom'),
-        standard: nistCategory || iecRequirement || 'Custom',
+        category: nistCategory && iecRequirement ? `NIST CSF, IEC 62443` : (nistCategory ? 'NIST CSF' : (iecRequirement ? 'IEC 62443' : 'Custom')),
+        standard: originalTitle,
         control_text: controlText,
         source_url: documentUrl,
         region: 'International',
