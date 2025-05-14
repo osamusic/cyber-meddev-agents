@@ -207,8 +207,14 @@ class DocumentIndexer:
 
         results = []
         for node in response.source_nodes:
+            try:
+                text = node.text
+            except ValueError:
+                logger.warning(f"Node is not a TextNode, using fallback text. Node type: {type(node)}")
+                text = "No text content available for this node"
+            
             results.append({
-                "text": node.text,
+                "text": text,
                 "score": node.score,
                 "metadata": node.metadata
             })
