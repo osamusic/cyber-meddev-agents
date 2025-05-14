@@ -302,3 +302,47 @@ async def update_guideline(
         "region": db_guideline.region,
         "keywords": keywords
     }
+
+
+@router.delete("/{guideline_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_guideline(
+    guideline_id: str,
+    request: Request,
+    db: SQLAlchemySession = Depends(get_db),
+    current_user=Depends(get_admin_user)  # 管理者のみがガイドラインを削除可能
+):
+    """ガイドラインを削除（管理者のみ）"""
+    client_host = request.client.host if request.client else "unknown"
+
+    db_guideline = db.query(GuidelineModel).filter(GuidelineModel.guideline_id == guideline_id).first()
+    if not db_guideline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ガイドラインID '{guideline_id}' が見つかりません"
+        )
+
+    db.query(GuidelineKeyword).filter(GuidelineKeyword.guideline_id == db_guideline.id).delete()
+
+    db.delete(db_guideline)
+
+    log_entry = {
+        "action": "guideline_delete",
+        "timestamp": datetime.utcnow(),
+        "user_id": current_user.id,
+        "details": f"Guideline {guideline_id} deleted",
+        "ip_address": client_host
+    }
+    logger.info(f"AUDIT LOG: {log_entry}")
+
+    try:
+        db.commit()
+        logger.info(f"ガイドライン '{guideline_id}' を削除しました")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"ガイドライン削除エラー: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ガイドライン削除中にエラーが発生しました: {str(e)}"
+        )
+
+    return None

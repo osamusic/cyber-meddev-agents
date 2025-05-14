@@ -7,6 +7,7 @@ import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import GuidelinesList from './components/guidelines/GuidelinesList';
 import GuidelineDetail from './components/guidelines/GuidelineDetail';
+import GuidelineForm from './components/guidelines/GuidelineForm';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AdminUsers from './components/admin/AdminUsers';
 import AdminDocuments from './components/admin/AdminDocuments';
@@ -42,6 +43,24 @@ function App() {
                 <ProtectedRoute>
                   <GuidelineDetail />
                 </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/guidelines/new" 
+              element={
+                <AdminRoute>
+                  <GuidelineForm />
+                </AdminRoute>
+              } 
+            />
+            
+            <Route 
+              path="/guidelines/edit/:id" 
+              element={
+                <AdminRoute>
+                  <GuidelineForm />
+                </AdminRoute>
               } 
             />
             

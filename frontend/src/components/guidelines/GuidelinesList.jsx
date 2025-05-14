@@ -1,14 +1,13 @@
 /* eslint-disable react/prop-types */
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
-import { FaChevronDown } from 'react-icons/fa';
-import { FaChevronRight } from 'react-icons/fa';
-import { FaPlus } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 
 
 const GuidelinesList = () => {
+  const location = useLocation();
   const [guidelines, setGuidelines] = useState([]);
   const [classifications, setClassifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +25,9 @@ const GuidelinesList = () => {
   const [selectedClassification, setSelectedClassification] = useState(null);
   const [showClassificationList, setShowClassificationList] = useState(true);
   const [loadingClassifications, setLoadingClassifications] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [guidelineToDelete, setGuidelineToDelete] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -104,6 +106,27 @@ const GuidelinesList = () => {
     
     fetchClassifications();
   }, []);
+  
+  useEffect(() => {
+    const checkIsAdmin = async () => {
+      try {
+        const response = await axiosClient.get('/users/me');
+        setIsAdmin(response.data.is_admin);
+      } catch (err) {
+        console.error('Error checking admin status:', err);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkIsAdmin();
+  }, []);
+  
+  useEffect(() => {
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -136,6 +159,31 @@ const GuidelinesList = () => {
     setSelectedStandard('');
     setSelectedRegion('');
     setSearchQuery('');
+  };
+  
+  const handleDeleteGuideline = async (guideline) => {
+    if (!guideline) return;
+    
+    try {
+      setLoading(true);
+      await axiosClient.delete(`/guidelines/${guideline.guideline_id}`);
+      
+      setGuidelines(prev => prev.filter(g => g.id !== guideline.id));
+      
+      setSuccessMessage(`ガイドライン "${guideline.guideline_id}" は正常に削除されました`);
+      
+      setGuidelineToDelete(null);
+    } catch (err) {
+      console.error('Error deleting guideline:', err);
+      let errorMessage = 'ガイドラインの削除中にエラーが発生しました';
+      if (err.response) {
+        errorMessage = `エラー (${err.response.status}): ${err.response.data.detail || errorMessage}`;
+      }
+      setError(errorMessage);
+      setGuidelineToDelete(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!loading && !error && guidelines.length === 0 && classifications.length === 0) {
@@ -408,7 +456,26 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
         </div>
       )}
       
+      {successMessage && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          {successMessage}
+          <button onClick={() => setSuccessMessage('')} className="float-right">✕</button>
+        </div>
+      )}
+      
       {/* 選択された分類の詳細表示はリスト内に移動 */}
+      
+      {/* Create New Guideline Button (admin only) */}
+      {isAdmin && (
+        <div className="mb-4">
+          <Link 
+            to="/guidelines/new"
+            className="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg inline-flex items-center"
+          >
+            <FaPlus className="mr-2" /> 新しいガイドラインを作成
+          </Link>
+        </div>
+      )}
       
       {/* 分類データ一覧 */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-6">
@@ -617,9 +684,24 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
                     {guideline.standard}: {guideline.guideline_id}
                   </Link>
                 </h3>
-                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                  {guideline.category}
-                </span>
+                <div>
+                  <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mr-2">
+                    {guideline.category}
+                  </span>
+                  {isAdmin && (
+                    <>
+                      <Link to={`/guidelines/edit/${guideline.id}`} className="text-yellow-500 hover:text-yellow-600 mx-2">
+                        <FaEdit />
+                      </Link>
+                      <button 
+                        onClick={() => setGuidelineToDelete(guideline)}
+                        className="text-red-500 hover:text-red-600"
+                      >
+                        <FaTrash />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               
               <p className="text-gray-700 mb-3 line-clamp-3">
@@ -684,6 +766,33 @@ const ClassificationDetail = ({ classification, onClose, onCreateGuideline }) =>
               </div>
             </div>
           ))}
+        </div>
+      )}
+      
+      {/* 削除確認ダイアログ */}
+      {guidelineToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <h3 className="text-xl font-semibold mb-4">ガイドラインを削除しますか？</h3>
+            <p className="mb-6 text-gray-600">
+              ガイドライン &quot;{guidelineToDelete.guideline_id}&quot; を削除してもよろしいですか？
+              この操作は元に戻せません。
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setGuidelineToDelete(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => handleDeleteGuideline(guidelineToDelete)}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                削除
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
