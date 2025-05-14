@@ -28,6 +28,12 @@ const Header = () => {
                   </Link>
                 </li>
                 
+                <li>
+                  <Link to="/documents/search" className="hover:text-blue-200">
+                    ドキュメント検索
+                  </Link>
+                </li>
+                
                 {isAdmin && (
                   <li className="relative group">
                     <button className="hover:text-blue-200">
