@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import { FaEdit, FaTrash } from 'react-icons/fa';
 
 const GuidelineDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [guideline, setGuideline] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const fetchGuideline = async () => {
@@ -30,6 +34,42 @@ const GuidelineDetail = () => {
 
     fetchGuideline();
   }, [id]);
+  
+  useEffect(() => {
+    const checkIsAdmin = async () => {
+      try {
+        const response = await axiosClient.get('/users/me');
+        setIsAdmin(response.data.is_admin);
+      } catch (err) {
+        console.error('Error checking admin status:', err);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkIsAdmin();
+  }, []);
+  
+  const handleDelete = async () => {
+    if (!guideline) return;
+    
+    try {
+      setLoading(true);
+      await axiosClient.delete(`/guidelines/${guideline.guideline_id}`);
+      navigate('/guidelines', { 
+        state: { message: `ガイドライン "${guideline.guideline_id}" は正常に削除されました` } 
+      });
+    } catch (err) {
+      console.error('Error deleting guideline:', err);
+      let errorMessage = 'ガイドラインの削除中にエラーが発生しました';
+      if (err.response) {
+        errorMessage = `エラー (${err.response.status}): ${err.response.data.detail || errorMessage}`;
+      }
+      setError(errorMessage);
+      setShowDeleteConfirm(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -56,6 +96,20 @@ const GuidelineDetail = () => {
         <Link to="/guidelines" className="text-blue-600 hover:underline">
           ← ガイドライン一覧に戻る
         </Link>
+        
+        {isAdmin && (
+          <div className="float-right">
+            <Link to={`/guidelines/edit/${id}`} className="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg inline-flex items-center mr-2">
+              <FaEdit className="mr-2" /> 編集
+            </Link>
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg inline-flex items-center"
+            >
+              <FaTrash className="mr-2" /> 削除
+            </button>
+          </div>
+        )}
       </div>
       
       <div className="flex justify-between items-start mb-4">
@@ -130,6 +184,33 @@ const GuidelineDetail = () => {
           ))}
         </div>
       </div>
+      
+      {/* 削除確認ダイアログ */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <h3 className="text-xl font-semibold mb-4">ガイドラインを削除しますか？</h3>
+            <p className="mb-6 text-gray-600">
+              ガイドライン &quot;{guideline.guideline_id}&quot; を削除してもよろしいですか？
+              この操作は元に戻せません。
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                削除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
