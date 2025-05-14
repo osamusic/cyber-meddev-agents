@@ -15,6 +15,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [classifyAll, setClassifyAll] = useState(false);
+  const [reclassifyMode, setReclassifyMode] = useState(false);  // 再分類モード用の状態
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   
@@ -36,6 +37,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     setSuccessMessage(null);
     setSelectedDocuments([]);
     setClassifyAll(false);
+    setReclassifyMode(false);  // 再分類モードもリセット
   };
 
   useEffect(() => {
@@ -59,6 +61,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     const requestData = {
       all_documents: classifyAll,
       document_ids: classifyAll ? [] : selectedDocuments,
+      reclassify: reclassifyMode,  // 再分類モードのパラメータを追加
     };
     
     await startClassification(requestData);
@@ -127,6 +130,16 @@ const ClassificationForm = ({ onClassifyComplete }) => {
             />
             <span className="font-medium">すべてのドキュメントを分類</span>
           </label>
+          
+          <label className="flex items-center mb-2 mt-2">
+            <input
+              type="checkbox"
+              checked={reclassifyMode}
+              onChange={(e) => setReclassifyMode(e.target.checked)}
+              className="mr-2"
+            />
+            <span className="font-medium">再分類モード（分類済みドキュメントを再分類）</span>
+          </label>
         </div>
         
         {!classifyAll && (
@@ -137,16 +150,18 @@ const ClassificationForm = ({ onClassifyComplete }) => {
                 <p className="text-gray-500">ドキュメントがありません</p>
               ) : (
                 documents.map(doc => (
-                  <label key={doc.id} className={`flex items-center mb-2 ${doc.is_classified ? 'text-gray-400' : ''}`}>
+                  <label key={doc.id} className={`flex items-center mb-2 ${doc.is_classified && !reclassifyMode ? 'text-gray-400' : ''}`}>
                     <input
                       type="checkbox"
                       onChange={(e) => handleDocumentSelect(e, doc.id)}
                       checked={selectedDocuments.includes(doc.id)}
-                      disabled={doc.is_classified}
+                      disabled={doc.is_classified && !reclassifyMode}  // 再分類モードの時は選択可能
                       className="mr-2"
                     />
                     <span>{doc.title || doc.url}</span>
                     {doc.is_classified && <span className="ml-2 text-sm text-gray-500">（分類済み）</span>}
+                    {doc.is_classified && reclassifyMode && selectedDocuments.includes(doc.id) && 
+                      <span className="ml-2 text-sm text-blue-500">（再分類予定）</span>}
                   </label>
                 ))
               )}
