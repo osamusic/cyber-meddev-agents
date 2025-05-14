@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import axiosClient from '../../api/axiosClient';
-import { FaSpinner } from 'react-icons/fa';
+import { FaSpinner, FaChevronDown, FaChevronRight } from 'react-icons/fa';
 import { useProcess } from '../../contexts/ProcessContext';
 
 const ClassificationForm = ({ onClassifyComplete }) => {
@@ -18,6 +18,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const [reclassifyMode, setReclassifyMode] = useState(false);  // 再分類モード用の状態
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState({});  // グループの展開状態を管理
   
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -40,6 +41,13 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     setReclassifyMode(false);  // 再分類モードもリセット
   };
 
+  const toggleGroup = (groupTitle) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupTitle]: !prev[groupTitle]
+    }));
+  };
+
   useEffect(() => {
     if (progress?.status === 'completed') {
       setSuccess(true);
@@ -50,6 +58,20 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       }
     }
   }, [progress, onClassifyComplete]);
+
+  const groupDocumentsByOriginalTitle = () => {
+    const groups = {};
+    
+    documents.forEach(doc => {
+      const groupTitle = doc.original_title || doc.title;
+      if (!groups[groupTitle]) {
+        groups[groupTitle] = [];
+      }
+      groups[groupTitle].push(doc);
+    });
+    
+    return groups;
+  };
 
 
   const handleSubmit = async (e) => {
@@ -72,6 +94,18 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       setSelectedDocuments(prev => [...prev, docId]);
     } else {
       setSelectedDocuments(prev => prev.filter(id => id !== docId));
+    }
+  };
+  
+  const handleGroupSelect = (e, docs) => {
+    const selectableDocIds = docs
+      .filter(doc => !doc.is_classified || reclassifyMode)
+      .map(doc => doc.id);
+    
+    if (e.target.checked) {
+      setSelectedDocuments(prev => [...new Set([...prev, ...selectableDocIds])]);
+    } else {
+      setSelectedDocuments(prev => prev.filter(id => !selectableDocIds.includes(id)));
     }
   };
   
@@ -149,21 +183,62 @@ const ClassificationForm = ({ onClassifyComplete }) => {
               {documents.length === 0 ? (
                 <p className="text-gray-500">ドキュメントがありません</p>
               ) : (
-                documents.map(doc => (
-                  <label key={doc.id} className={`flex items-center mb-2 ${doc.is_classified && !reclassifyMode ? 'text-gray-400' : ''}`}>
-                    <input
-                      type="checkbox"
-                      onChange={(e) => handleDocumentSelect(e, doc.id)}
-                      checked={selectedDocuments.includes(doc.id)}
-                      disabled={doc.is_classified && !reclassifyMode}  // 再分類モードの時は選択可能
-                      className="mr-2"
-                    />
-                    <span>{doc.title || doc.url}</span>
-                    {doc.is_classified && <span className="ml-2 text-sm text-gray-500">（分類済み）</span>}
-                    {doc.is_classified && reclassifyMode && selectedDocuments.includes(doc.id) && 
-                      <span className="ml-2 text-sm text-blue-500">（再分類予定）</span>}
-                  </label>
-                ))
+                (() => {
+                  const documentGroups = groupDocumentsByOriginalTitle();
+                  return Object.entries(documentGroups).map(([groupTitle, docs]) => {
+                    const allClassified = docs.every(doc => doc.is_classified);
+                    const selectableDocIds = docs
+                      .filter(doc => !doc.is_classified || reclassifyMode)
+                      .map(doc => doc.id);
+                    const allSelected = selectableDocIds.length > 0 && 
+                      selectableDocIds.every(id => selectedDocuments.includes(id));
+                    
+                    return (
+                      <div key={groupTitle} className={`mb-3 border-b pb-2 ${allClassified && !reclassifyMode ? 'opacity-60' : ''}`}>
+                        <div className="flex items-center cursor-pointer mb-1" onClick={() => toggleGroup(groupTitle)}>
+                          <div className="mr-2">
+                            {expandedGroups[groupTitle] ? <FaChevronDown /> : <FaChevronRight />}
+                          </div>
+                          
+                          <label className="flex items-center flex-grow cursor-pointer">
+                            <input
+                              type="checkbox"
+                              onChange={(e) => handleGroupSelect(e, docs)}
+                              checked={allSelected}
+                              disabled={selectableDocIds.length === 0}
+                              className="mr-2"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className={`font-medium ${allClassified && !reclassifyMode ? 'text-gray-500' : ''}`}>
+                              {groupTitle} ({docs.length}件)
+                            </span>
+                            {allClassified && <span className="ml-2 text-sm text-gray-500">（全て分類済み）</span>}
+                          </label>
+                        </div>
+                        
+                        {expandedGroups[groupTitle] && (
+                          <div className="pl-7 mt-1">
+                            {docs.map(doc => (
+                              <label key={doc.id} className={`flex items-center mb-2 ${doc.is_classified && !reclassifyMode ? 'text-gray-400' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  onChange={(e) => handleDocumentSelect(e, doc.id)}
+                                  checked={selectedDocuments.includes(doc.id)}
+                                  disabled={doc.is_classified && !reclassifyMode}  // 再分類モードの時は選択可能
+                                  className="mr-2"
+                                />
+                                <span>{doc.title || doc.url}</span>
+                                {doc.is_classified && <span className="ml-2 text-sm text-gray-500">（分類済み）</span>}
+                                {doc.is_classified && reclassifyMode && selectedDocuments.includes(doc.id) && 
+                                  <span className="ml-2 text-sm text-blue-500">（再分類予定）</span>}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()
               )}
             </div>
           </div>
