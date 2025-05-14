@@ -15,6 +15,7 @@ import NotFound from './components/common/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AdminRoute from './components/auth/AdminRoute';
 import ProgressModal from './components/common/ProgressModal';
+import DocumentSearch from './components/documents/DocumentSearch';
 
 function App() {
   return (
@@ -88,6 +89,15 @@ function App() {
                 <AdminRoute>
                   <AdminDocuments />
                 </AdminRoute>
+              } 
+            />
+            
+            <Route 
+              path="/documents/search" 
+              element={
+                <ProtectedRoute>
+                  <DocumentSearch />
+                </ProtectedRoute>
               } 
             />
             
