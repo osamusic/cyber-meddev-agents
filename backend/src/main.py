@@ -35,8 +35,9 @@ public_router = APIRouter()
 def read_root():
     return {"message": "Cyber-Med-Agent Backend is running"}
 
+public_router.include_router(auth_router)
+
 app.include_router(public_router)
-app.include_router(auth_router)
 app.include_router(guidelines_router)
 app.include_router(admin_router)
 app.include_router(indexer_router)
