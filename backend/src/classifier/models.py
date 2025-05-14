@@ -7,6 +7,7 @@ class ClassificationRequest(BaseModel):
     section_ids: List[int] = []
     document_ids: List[int] = []
     all_documents: bool = False
+    reclassify: bool = False  # 既に分類済みのドキュメントを再分類するかどうか
 
 
 class KeywordExtractionConfig(BaseModel):

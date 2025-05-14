@@ -62,10 +62,13 @@ async def classify_documents(
     already_classified_docs = []
 
     if classification_request.all_documents:
-        classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
-        documents = db.query(DBDocument).filter(
-            ~DBDocument.id.in_(db.query(classified_doc_ids.c.document_id))
-        ).all()
+        if classification_request.reclassify:
+            documents = db.query(DBDocument).all()
+        else:
+            classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
+            documents = db.query(DBDocument).filter(
+                ~DBDocument.id.in_(db.query(classified_doc_ids.c.document_id))
+            ).all()
     elif classification_request.document_ids:
         for doc_id in classification_request.document_ids:
             doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
@@ -76,7 +79,7 @@ async def classify_documents(
                 DBClassificationResult.document_id == doc_id
             ).first()
 
-            if existing_classification:
+            if existing_classification and not classification_request.reclassify:
                 already_classified_docs.append(doc.title or f"Document {doc_id}")
             else:
                 documents.append(doc)
