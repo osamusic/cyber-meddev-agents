@@ -118,6 +118,27 @@ const AdminDocuments = () => {
                   </div>
                   <h3 className="text-lg font-medium text-gray-900">{groupTitle}</h3>
                   <span className="ml-2 text-sm text-gray-500">({docs.length}件)</span>
+                  
+                  {/* ソースとダウンロード日時をグループヘッダーに表示 */}
+                  {docs.length > 0 && (
+                    <div className="ml-auto flex items-center">
+                      <span className="text-sm text-gray-500 mr-4">
+                        ソース: 
+                        <a 
+                          href={docs[0].url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="ml-1 text-blue-600 hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {docs[0].source_type}
+                        </a>
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        ダウンロード日時: {formatDate(docs[0].downloaded_at)}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 
                 {expandedGroups[groupTitle] && (
@@ -132,12 +153,6 @@ const AdminDocuments = () => {
                             タイトル
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            ソース
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            ダウンロード日時
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             アクション
                           </th>
                         </tr>
@@ -150,19 +165,6 @@ const AdminDocuments = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               {doc.title}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <a 
-                                href={doc.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline"
-                              >
-                                {doc.source_type}
-                              </a>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {formatDate(doc.downloaded_at)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {deleteConfirmation === doc.doc_id ? (
