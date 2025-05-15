@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
 import logging
 import fitz  # PyMuPDF
+
 from .models import CrawlTarget, Document
 
 logging.basicConfig(level=logging.INFO)
@@ -15,94 +16,188 @@ logger = logging.getLogger(__name__)
 
 
 class Crawler:
-    """Crawler for medical device cybersecurity documents"""
+    """Crawler for cybersecurity-related medical documents from the web."""
+
+    DEFAULT_HEADERS = {
+        'User-Agent': 'Cyber-Med-Agent Crawler/1.0'
+    }
 
     def __init__(self, db=None, target=None):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Cyber-Med-Agent Crawler/1.0'
-        })
+        self.session = self._init_session()
         self.visited_urls = set()
-        self.db = db  # データベースセッション
-
+        self.db = db
         self.max_document_size = int(os.getenv("MAX_DOCUMENT_SIZE", "4000"))
         if target and target.max_document_size:
             self.max_document_size = target.max_document_size
 
+    def _init_session(self) -> requests.Session:
+        session = requests.Session()
+        session.headers.update(self.DEFAULT_HEADERS)
+        return session
+
     def crawl(self, target: CrawlTarget) -> List[Document]:
-        """Crawl a target URL and return extracted documents"""
+        """Crawl a target URL and return extracted documents."""
         logger.info(f"Starting crawl for {target.url}")
         documents = []
-
         try:
             self._crawl_url(target.url, target, documents, depth=0)
         except Exception as e:
             logger.error(f"Error crawling {target.url}: {str(e)}")
-
         logger.info(f"Crawl completed. Found {len(documents)} documents")
         return documents
 
     def _crawl_url(self, url: str, target: CrawlTarget, documents: List[Document], depth: int) -> None:
-        """Recursively crawl URLs up to specified depth"""
+        """Recursively crawl a URL up to the specified depth."""
         if depth > target.depth or url in self.visited_urls:
             return
 
         self.visited_urls.add(url)
         logger.info(f"Crawling {url} (depth {depth})")
 
-        doc_id = hashlib.sha256(url.encode()).hexdigest()
-
-        if self.db is not None:
-            from ..db.models import DocumentModel
-            existing_doc = self.db.query(DocumentModel).filter(
-                DocumentModel.doc_id == doc_id
-            ).first()
-
-            if existing_doc and not target.update_existing:
-                logger.info(f"Skipping existing document: {url}")
-                return
+        if not self._should_crawl_url(url, target):
+            return
 
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
-
             content_type = response.headers.get('Content-Type', '').split(';')[0]
 
             if content_type in target.mime_filters:
-                result_docs = self._process_document(url, response, content_type, target)
-                if result_docs:
-                    documents.extend(result_docs)
+                processed_docs = self._process_document(url, response, content_type, target)
+                if processed_docs:
+                    documents.extend(processed_docs)
 
             if content_type == 'text/html' and depth < target.depth:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                links = soup.find_all('a', href=True)
-
-                for link in links:
-                    href = link['href']
-                    if href.startswith('/'):
-                        from urllib.parse import urlparse
-                        base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-                        href = base_url + href
-                    elif not href.startswith(('http://', 'https://')):
-                        if url.endswith('/'):
-                            href = url + href
-                        else:
-                            href = url + '/' + href
-
-                    self._crawl_url(href, target, documents, depth + 1)
+                self._follow_links(response, url, target, documents, depth)
 
         except Exception as e:
             logger.error(f"Error processing {url}: {str(e)}")
 
-    def _split_document(self, content: str, source_type: str, url: str, title: str = "", target: Optional[CrawlTarget] = None, toc_info: Optional[List[Dict]] = None, original_title: Optional[str] = None) -> List[Document]:
-        """大きなドキュメントを適切なサイズに分割する"""
-        max_size = self.max_document_size
-        if target and target.max_document_size:
-            max_size = target.max_document_size
-        logger.info(f"Splitting document from {url} with max size {max_size}, content length: {len(content)} characters")
+    def _should_crawl_url(self, url: str, target: CrawlTarget) -> bool:
+        """Determine whether to crawl or skip based on the DB and update flags."""
+        doc_id = hashlib.sha256(url.encode()).hexdigest()
 
-        if original_title is None:
-            original_title = title
+        if self.db:
+            from ..db.models import DocumentModel
+            existing_doc = self.db.query(DocumentModel).filter_by(doc_id=doc_id).first()
+            if existing_doc and not target.update_existing:
+                logger.info(f"Skipping existing document: {url}")
+                return False
+        return True
+
+    def _follow_links(self, response, base_url: str, target: CrawlTarget, documents: List[Document], depth: int) -> None:
+        """Parse and recursively follow links on an HTML page."""
+        soup = BeautifulSoup(response.content, 'html.parser')
+        for link in soup.find_all('a', href=True):
+            href = self._normalize_link(base_url, link['href'])
+            self._crawl_url(href, target, documents, depth + 1)
+
+    def _normalize_link(self, base_url: str, href: str) -> str:
+        """Return an absolute URL based on the base URL and href."""
+        if href.startswith('/'):
+            parsed_base = urllib.parse.urlparse(base_url)
+            return f"{parsed_base.scheme}://{parsed_base.netloc}{href}"
+        elif not href.startswith(('http://', 'https://')):
+            return urllib.parse.urljoin(base_url + '/', href)
+        return href
+
+    def _clean_title(self, title: str, max_length: int = 100) -> str:
+        """Clean and truncate document titles for standardization."""
+        title = urllib.parse.unquote(title)
+        match = re.match(r"(.+?)(\.[^.]+)?$", title)
+        base, ext = match.groups() if match else (title, "")
+        base = re.sub(r"[^\w\s\-ぁ-んァ-ン一-龯]", "", base)
+        base = re.sub(r"[_\s]+", " ", base).strip()
+        return base[:max_length].rstrip()
+
+    def _process_document(self, url: str, response, content_type: str, target: CrawlTarget) -> List[Document]:
+        """Convert a downloaded file into Document(s) depending on type."""
+        try:
+            title = url.split('/')[-1]
+            toc_info, content, original_title = None, "", None
+
+            if content_type == 'text/html':
+                soup = BeautifulSoup(response.content, 'html.parser')
+                title = soup.title.string if soup.title else url
+                content = soup.get_text(separator='\n', strip=True)
+                source_type = "HTML"
+
+            elif content_type == 'application/pdf':
+                source_type = "PDF"
+                pdf_data = response.content
+                try:
+                    pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
+                    toc_info = self._extract_pdf_toc(pdf_document)
+                    content, original_title = self._extract_pdf_text(pdf_document, url)
+                    pdf_document.close()
+                except Exception as e:
+                    logger.error(f"Error extracting content from PDF {url}: {str(e)}")
+                    content = f"Failed to extract content from PDF at {url}: {str(e)}"
+                    original_title = title
+
+            else:
+                source_type = content_type.split('/')[-1].upper()
+                content = f"Content from {url} - format {content_type}"
+                original_title = title
+
+            return self._split_document(
+                content=content,
+                source_type=source_type,
+                url=url,
+                title=self._clean_title(title),
+                target=target,
+                toc_info=toc_info,
+                original_title=self._clean_title(original_title)
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing document {url}: {str(e)}")
+            return []
+
+    def _extract_pdf_toc(self, pdf_document) -> Optional[List[Dict]]:
+        """Extract the Table of Contents from a PDF, if available."""
+        toc = pdf_document.get_toc()
+        if not toc:
+            return None
+        logger.info(f"PDF has TOC with {len(toc)} entries")
+        return [
+            {
+                "level": level,
+                "title": title,
+                "page_num": page_num,
+                "text": pdf_document[page_num].get_text() if 0 <= page_num < len(pdf_document) else ""
+            }
+            for level, title, page_num in toc
+        ]
+
+    def _extract_pdf_text(self, pdf_document, url: str) -> (str, Optional[str]):
+        """Extracts all pages from a PDF as labeled text, returns text and original title."""
+        content = ""
+        for page_num in range(len(pdf_document)):
+            text = pdf_document[page_num].get_text()
+            content += f"[PAGE_{page_num}]\n{text}\n[/PAGE_{page_num}]\n"
+
+        meta_title = pdf_document.metadata.get('title', '').strip()
+        if not content.strip():
+            logger.warning(f"No extractable text in PDF: {url}")
+            content = f"PDF from {url} appears to contain no extractable text"
+        return content, meta_title or url.split('/')[-1]
+
+    def _split_document(
+        self,
+        content: str,
+        source_type: str,
+        url: str,
+        title: str = "",
+        target: Optional[CrawlTarget] = None,
+        toc_info: Optional[List[Dict]] = None,
+        original_title: Optional[str] = None
+    ) -> List[Document]:
+        """Split a document into multiple smaller parts if it exceeds the max size."""
+        max_size = target.max_document_size if target and target.max_document_size else self.max_document_size
+        logger.info(f"Splitting document from {url} (max {max_size} chars), content length: {len(content)}")
+
+        original_title = original_title or title
         if len(content) <= max_size:
             doc_id = hashlib.sha256(url.encode()).hexdigest()
             return [Document(
@@ -117,127 +212,10 @@ class Crawler:
             )]
 
         docs = []
-        chunks = []
-
-        if source_type == "PDF" and toc_info and len(toc_info) > 0:
-            logger.info(f"Attempting TOC-based splitting for {url} with {len(toc_info)} TOC entries")
-
-            chapters = []
-            current_chapter = None
-
-            for entry in toc_info:
-                if entry["level"] == 1:
-                    if current_chapter:
-                        chapters.append(current_chapter)
-                    current_chapter = {
-                        "title": entry["title"],
-                        "content": f"[CHAPTER: {entry['title']}]\n{entry['text']}",
-                        "page_nums": {entry["page_num"]}  # 重複を避けるためにセットを使用
-                    }
-                elif current_chapter:
-                    current_chapter["content"] += f"\n[SECTION: {entry['title']}]\n{entry['text']}"
-                    current_chapter["page_nums"].add(entry["page_num"])
-
-            if current_chapter:
-                chapters.append(current_chapter)
-
-            if chapters:
-                logger.info(f"Found {len(chapters)} chapters for TOC-based splitting")
-
-                for chapter in chapters:
-                    chapter_content = chapter["content"]
-                    chapter_title = chapter["title"]
-
-                    if len(chapter_content) <= max_size:
-                        chunks.append({
-                            "title": chapter_title,
-                            "content": chapter_content
-                        })
-                    else:
-                        paragraphs = chapter_content.split("\n\n")
-                        current_chunk = ""
-                        current_chunk_title = chapter_title
-                        chunk_count = 1
-
-                        for para in paragraphs:
-                            if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
-                                chunks.append({
-                                    "title": f"{current_chunk_title} (Part {chunk_count})",
-                                    "content": current_chunk
-                                })
-                                chunk_count += 1
-                                current_chunk = para
-                            else:
-                                if current_chunk:
-                                    current_chunk += "\n\n"
-                                current_chunk += para
-
-                        if current_chunk:
-                            chunks.append({
-                                "title": f"{current_chunk_title} (Part {chunk_count})",
-                                "content": current_chunk
-                            })
-
-            if not chunks:
-                logger.warning(f"TOC-based splitting failed for {url}, falling back to page-based splitting")
-                import re
-                page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
-                page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
-
-                current_chunk = ""
-                for page in page_breaks:
-                    if len(current_chunk) + len(page) > max_size and current_chunk:
-                        chunks.append({"title": title, "content": current_chunk})
-                        current_chunk = page
-                    else:
-                        current_chunk += page
-
-                if current_chunk:
-                    chunks.append({"title": title, "content": current_chunk})
-
-        elif source_type == "PDF":
-            import re
-            page_breaks = re.split(r'\[/PAGE_\d+\]\n', content)
-            page_breaks = [p for p in page_breaks if p.strip()]  # 空のページを削除
-
-            current_chunk = ""
-            for page in page_breaks:
-                if len(current_chunk) + len(page) > max_size and current_chunk:
-                    chunks.append({"title": title, "content": current_chunk})
-                    current_chunk = page
-                else:
-                    current_chunk += page
-
-            if current_chunk:
-                chunks.append({"title": title, "content": current_chunk})
-
-        elif source_type == "HTML":
-            paragraphs = content.split("\n\n")
-            current_chunk = ""
-
-            for para in paragraphs:
-                if len(current_chunk) + len(para) + 2 > max_size and current_chunk:
-                    chunks.append({"title": title, "content": current_chunk})
-                    current_chunk = para
-                else:
-                    if current_chunk:
-                        current_chunk += "\n\n"
-                    current_chunk += para
-
-            if current_chunk:
-                chunks.append({"title": title, "content": current_chunk})
-
-        else:
-            for i in range(0, len(content), max_size):
-                chunks.append({"title": title, "content": content[i:i + max_size]})
+        chunks = self._split_content_by_type(content, source_type, max_size, title, toc_info)
 
         for i, chunk in enumerate(chunks):
-            chunk_content = chunk["content"]
-            chunk_title = chunk["title"]
-
-            if chunk_title == title:
-                chunk_title = f"{title} (Part {i + 1}/{len(chunks)})"
-
+            chunk_title = f"{chunk['title']} (Part {i + 1}/{len(chunks)})" if chunk['title'] == title else chunk['title']
             chunk_id = hashlib.sha256(f"{url}_{i}".encode()).hexdigest()
 
             docs.append(Document(
@@ -245,121 +223,96 @@ class Crawler:
                 url=url,
                 title=chunk_title,
                 original_title=original_title,
-                content=chunk_content,
+                content=chunk['content'],
                 source_type=source_type,
                 downloaded_at=datetime.now(),
                 lang="en"
             ))
 
-        logger.info(f"Document from {url} split into {len(docs)} parts with average part size: {sum(len(d.content) for d in docs) // max(1, len(docs))} characters")
+        logger.info(f"Split document into {len(docs)} parts, avg size: {sum(len(d.content) for d in docs) // len(docs)} chars")
         return docs
 
-    def _clean_title(self, title: str, max_length: int = 100) -> str:
-        # URLエンコードのデコード
-        title = urllib.parse.unquote(title)
+    def _split_content_by_type(
+        self,
+        content: str,
+        source_type: str,
+        max_size: int,
+        title: str,
+        toc_info: Optional[List[Dict]]
+    ) -> List[Dict[str, str]]:
+        """Split content according to document type and optional TOC."""
+        chunks = []
 
-        # ファイル拡張子を分離
-        match = re.match(r"(.+?)(\.[^.]+)?$", title)
-        if not match:
-            return title[:max_length]  # フォールバック
-        base, ext = match.groups()
-        ext = ext or ""
+        if source_type == "PDF" and toc_info:
+            logger.info(f"Using TOC-based split: {len(toc_info)} entries")
+            chapters = []
+            current = None
 
-        # 不要な記号を削除（英数・日本語・スペース・アンダースコア・ハイフン以外を除外）
-        base = re.sub(r"[^\w\s\-ぁ-んァ-ン一-龯]", "", base)
+            for entry in toc_info:
+                if entry["level"] == 1:
+                    if current:
+                        chapters.append(current)
+                    current = {
+                        "title": entry["title"],
+                        "content": f"[CHAPTER: {entry['title']}]\n{entry['text']}",
+                        "page_nums": {entry["page_num"]}
+                    }
+                elif current:
+                    current["content"] += f"\n[SECTION: {entry['title']}]\n{entry['text']}"
+                    current["page_nums"].add(entry["page_num"])
 
-        # アンダースコアや連続スペースをスペースに
-        base = re.sub(r"[_\s]+", " ", base).strip()
+            if current:
+                chapters.append(current)
 
-        # 最大長で切り詰め（拡張子分を考慮）
-        if len(base) > max_length:
-            base = base[:max_length].rstrip()
+            for chapter in chapters:
+                if len(chapter["content"]) <= max_size:
+                    chunks.append({"title": chapter["title"], "content": chapter["content"]})
+                else:
+                    paras = chapter["content"].split("\n\n")
+                    chunk, count = "", 1
+                    for para in paras:
+                        if len(chunk) + len(para) > max_size and chunk:
+                            chunks.append({
+                                "title": f"{chapter['title']} (Part {count})",
+                                "content": chunk
+                            })
+                            chunk, count = para, count + 1
+                        else:
+                            chunk = f"{chunk}\n\n{para}".strip()
+                    if chunk:
+                        chunks.append({
+                            "title": f"{chapter['title']} (Part {count})",
+                            "content": chunk
+                        })
 
-        return f"{base}"
+        elif source_type == "PDF":
+            pages = re.split(r'\[/PAGE_\d+\]\n', content)
+            current = ""
+            for page in filter(str.strip, pages):
+                if len(current) + len(page) > max_size and current:
+                    chunks.append({"title": title, "content": current})
+                    current = page
+                else:
+                    current += page
+            if current:
+                chunks.append({"title": title, "content": current})
 
-    def _process_document(self, url: str, response, content_type: str, target: CrawlTarget) -> List[Document]:
-        """Process a document based on its content type and split if necessary"""
-        try:
-            if content_type == 'text/html':
-                soup = BeautifulSoup(response.content, 'html.parser')
-                title = soup.title.string if soup.title else url
-                content = soup.get_text(separator='\n', strip=True)
-                source_type = "HTML"
-                toc_info = None
+        elif source_type == "HTML":
+            paras = content.split("\n\n")
+            current = ""
+            for para in paras:
+                if len(current) + len(para) > max_size and current:
+                    chunks.append({"title": title, "content": current})
+                    current = para
+                else:
+                    current = f"{current}\n\n{para}".strip()
+            if current:
+                chunks.append({"title": title, "content": current})
 
-            elif content_type == 'application/pdf':
-                title = url.split('/')[-1]
-                try:
-                    pdf_data = response.content
-                    pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
+        else:
+            chunks = [
+                {"title": title, "content": content[i:i + max_size]}
+                for i in range(0, len(content), max_size)
+            ]
 
-                    toc = pdf_document.get_toc()
-                    toc_info = None
-                    if toc:
-                        logger.info(f"PDF from {url} has TOC with {len(toc)} entries")
-                        toc_info = []
-                        for level, title, page_num in toc:
-                            if 0 <= page_num < len(pdf_document):
-                                page_text = pdf_document[page_num].get_text()
-                                toc_info.append({
-                                    "level": level,
-                                    "title": title,
-                                    "page_num": page_num,
-                                    "text": page_text
-                                })
-
-                    content = ""
-                    page_contents = []
-                    for page_num in range(len(pdf_document)):
-                        page = pdf_document[page_num]
-                        page_text = page.get_text()
-                        page_contents.append(page_text)
-                        content += f"[PAGE_{page_num}]\n{page_text}\n[/PAGE_{page_num}]\n"
-
-                    metadata = pdf_document.metadata
-                    original_title = None
-                    if metadata.get('title') and metadata.get('title').strip():
-                        title = metadata.get('title')
-                        original_title = metadata.get('title')
-                    else:
-                        original_title = url.split('/')[-1]
-
-                    pdf_document.close()
-
-                    if not content.strip():
-                        content = f"PDF from {url} appears to contain no extractable text (may be scanned or image-based)"
-                        logger.warning(f"Empty content extracted from PDF: {url}")
-
-                except Exception as e:
-                    logger.error(f"Error extracting content from PDF {url}: {str(e)}")
-                    content = f"Failed to extract content from PDF at {url}: {str(e)}"
-                    toc_info = None
-                    original_title = url.split('/')[-1]  # エラー時もオリジナルタイトルを設定
-
-                source_type = "PDF"
-
-            else:
-                title = url.split('/')[-1]
-                content = f"Content from {url} - format {content_type}"
-                source_type = content_type.split('/')[-1].upper()
-                toc_info = None
-                original_title = title  # PDF以外の場合もオリジナルタイトルを設定
-
-            title_str = str(title) if title is not None else url
-            title_str = self._clean_title(title_str)
-            original_title_str = str(original_title) if original_title is not None else url
-            original_title_str = self._clean_title(original_title_str)
-
-            return self._split_document(
-                content=content,
-                source_type=source_type,
-                url=url,
-                title=title_str,
-                target=target,
-                toc_info=toc_info,
-                original_title=original_title_str
-            )
-
-        except Exception as e:
-            logger.error(f"Error processing document {url}: {str(e)}")
-            return []
+        return chunks
