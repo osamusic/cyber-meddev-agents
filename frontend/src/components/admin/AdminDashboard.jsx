@@ -167,6 +167,13 @@ const AdminDashboard = () => {
         <h2 className="text-lg font-semibold mb-4">クイックアクション</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          <button 
+            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded"
+            onClick={() => setShowCrawlerForm(!showCrawlerForm)}
+          >
+            {showCrawlerForm ? 'フォームを閉じる' : 'クローラーを実行'}
+          </button>
           <button 
             className={`bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded ${
               updatingIndex ? 'opacity-75 cursor-not-allowed' : ''
@@ -176,14 +183,6 @@ const AdminDashboard = () => {
           >
             {updatingIndex ? 'インデックス更新中...' : 'インデックスを更新'}
           </button>
-          
-          <button 
-            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded"
-            onClick={() => setShowCrawlerForm(!showCrawlerForm)}
-          >
-            {showCrawlerForm ? 'フォームを閉じる' : 'クローラーを実行'}
-          </button>
-          
           <button 
             className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded"
             onClick={() => setShowClassificationForm(!showClassificationForm)}

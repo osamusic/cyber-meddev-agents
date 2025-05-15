@@ -287,7 +287,23 @@ class DocumentIndexer:
 
         doc_count = len(os.listdir(self.documents_dir))
 
-        node_count = len(self.index.docstore.docs)
+        # チャンク数（＝インデックスに載っているノード数）を取得
+        total_chunks = 0
+        struct = getattr(self.index, "index_struct", None)
+        if struct:
+            if hasattr(struct, "node_ids"):
+                # VectorIndex の場合はこちら
+                total_chunks = len(struct.node_ids)
+            elif hasattr(struct, "nodes"):
+                # 他のインデックス構造で使われる場合
+                total_chunks = len(struct.nodes)
+            elif hasattr(struct, "_node_ids"):
+                # まれにプライベート属性の場合
+                total_chunks = len(struct._node_ids)
+        # どれにも当てはまらなければフォールバック
+        if total_chunks == 0:
+            logger.warning("Unable to determine total chunks from index structure, falling back to docstore")
+            total_chunks = len(self.index.docstore.docs)
 
         if os.path.exists(os.path.join(self.index_dir, "docstore.json")):
             last_updated = datetime.fromtimestamp(
@@ -298,6 +314,6 @@ class DocumentIndexer:
 
         return IndexStats(
             total_documents=doc_count,
-            total_chunks=node_count,
+            total_chunks=total_chunks,
             last_updated=last_updated
         )
