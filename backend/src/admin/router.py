@@ -10,8 +10,8 @@ from .models import DocumentInfo, DeleteConfirmation
 
 router = APIRouter(
     prefix="/admin",
-    tags=["管理者"],
-    dependencies=[Depends(get_admin_user)]  # Ensure only admins can access
+    tags=["admin"],
+    dependencies=[Depends(get_admin_user)]  # Only admins can access these endpoints
 )
 
 
@@ -22,15 +22,20 @@ async def get_all_documents(
     db: SQLAlchemySession = Depends(get_db)
 ):
     """Get all documents (admin only)"""
+    # Subquery to find document IDs that have been classified
     classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
     documents = db.query(DocumentModel).offset(skip).limit(limit).all()
+
     result = []
     for doc in documents:
         doc_dict = vars(doc)
-        doc_dict["is_classified"] = db.query(classified_doc_ids.c.document_id).filter(
-            classified_doc_ids.c.document_id == doc.id
-        ).first() is not None
+        doc_dict["is_classified"] = (
+            db.query(classified_doc_ids.c.document_id)
+              .filter(classified_doc_ids.c.document_id == doc.id)
+              .first() is not None
+        )
         result.append(doc_dict)
+
     return result
 
 
@@ -40,19 +45,21 @@ async def get_document_by_id(
     db: SQLAlchemySession = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """Get document by ID (accessible to all authenticated users)"""
+    """Get a single document by its ID (all authenticated users)"""
     document = db.query(DocumentModel).filter(DocumentModel.id == document_id).first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ドキュメントID '{document_id}' が見つかりません"
+            detail=f"Document ID '{document_id}' not found"
         )
 
     doc_dict = vars(document)
     classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
-    doc_dict["is_classified"] = db.query(classified_doc_ids.c.document_id).filter(
-        classified_doc_ids.c.document_id == document.id
-    ).first() is not None
+    doc_dict["is_classified"] = (
+        db.query(classified_doc_ids.c.document_id)
+          .filter(classified_doc_ids.c.document_id == document.id)
+          .first() is not None
+    )
 
     return doc_dict
 
@@ -69,14 +76,14 @@ async def delete_document(
     if not confirmation.confirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="削除を確認してください"  # Please confirm deletion
+            detail="Please confirm deletion"
         )
 
     document = db.query(DocumentModel).filter(DocumentModel.doc_id == doc_id).first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="ドキュメントが見つかりません"  # Document not found
+            detail="Document not found"
         )
 
     client_host = request.client.host if request.client else "unknown"
@@ -84,15 +91,15 @@ async def delete_document(
         "action": "document_delete",
         "timestamp": datetime.utcnow(),
         "user_id": current_user.id,
-        "details": f"Document {document.title} (ID: {doc_id}) deleted",
+        "details": f"Deleted document '{document.title}' (ID: {doc_id})",
         "ip_address": client_host
     }
-    print(f"AUDIT LOG: {log_entry}")  # In a real implementation, save to database
+    print(f"AUDIT LOG: {log_entry}")  # In production, store this in an audit log
 
     db.delete(document)
     db.commit()
 
-    return {"message": "ドキュメントが削除されました"}  # Document deleted
+    return {"message": "Document has been deleted."}
 
 
 @router.get("/users")
@@ -113,12 +120,12 @@ async def toggle_admin_status(
     db: SQLAlchemySession = Depends(get_db),
     current_user=Depends(get_admin_user)
 ):
-    """Toggle admin status for a user (admin only)"""
+    """Toggle a user's admin status (admin only)"""
     user = db.query(UserModel).filter(UserModel.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="ユーザーが見つかりません"  # User not found
+            detail="User not found"
         )
 
     user.is_admin = not user.is_admin
@@ -128,12 +135,12 @@ async def toggle_admin_status(
         "action": "admin_status_change",
         "timestamp": datetime.utcnow(),
         "user_id": current_user.id,
-        "details":
-            f"User {user.username} (ID: {user_id}) admin status changed to {user.is_admin}",
+        "details": f"User '{user.username}' (ID: {user_id}) admin status changed to {user.is_admin}",
         "ip_address": client_host
     }
-    print(f"AUDIT LOG: {log_entry}")  # In a real implementation, save to database
+    print(f"AUDIT LOG: {log_entry}")  # In production, store this in an audit log
 
     db.commit()
 
-    return {"message": f"ユーザー {user.username} の管理者権限が {'付与' if user.is_admin else '解除'} されました"}
+    status_text = "granted" if user.is_admin else "revoked"
+    return {"message": f"Admin privileges {status_text} for user '{user.username}'."}

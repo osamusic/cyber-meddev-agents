@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/crawler",
-    tags=["クローラー"],
-    dependencies=[Depends(get_admin_user)]  # 管理者のみがアクセス可能
+    tags=["Crawler"],
+    dependencies=[Depends(get_admin_user)]  # Only administrators can access
 )
 
 
@@ -27,7 +27,7 @@ async def run_crawler(
     db: SQLAlchemySession = Depends(get_db),
     current_user=Depends(get_admin_user)
 ):
-    """クローラーを実行する（管理者のみ）"""
+    """Run the crawler (admin only)"""
     client_host = request.client.host if request.client else "unknown"
 
     log_entry = {
@@ -47,7 +47,7 @@ async def run_crawler(
     )
 
     return {
-        "message": "クローラーが開始されました",
+        "message": "Crawler has been started",
         "target": target.dict(),
         "status": "processing"
     }
@@ -59,7 +59,7 @@ async def get_crawler_status(
     db: SQLAlchemySession = Depends(get_db),
     current_user=Depends(get_admin_user)
 ):
-    """最近クロールされたドキュメントのステータスを取得する（管理者のみ）"""
+    """Get the status of recently crawled documents (admin only)"""
     recent_documents = db.query(DocumentModel).order_by(
         DocumentModel.downloaded_at.desc()
     ).limit(limit).all()
@@ -69,7 +69,7 @@ async def get_crawler_status(
             doc_id=doc.doc_id,
             url=doc.url,
             title=doc.title,
-            original_title=doc.original_title if doc.original_title else doc.title,
+            original_title=doc.original_title or doc.title,
             content=doc.content,
             source_type=doc.source_type,
             downloaded_at=doc.downloaded_at,
@@ -79,9 +79,9 @@ async def get_crawler_status(
 
 
 def run_crawler_task(target: CrawlTarget, db: SQLAlchemySession, user_id: int):
-    """バックグラウンドでクローラーを実行するタスク"""
+    """Background task to run the crawler"""
     try:
-        crawler = Crawler(db=db)  # データベースセッションをクローラーに渡す
+        crawler = Crawler(db=db)  # Pass the DB session to the crawler
         documents = crawler.crawl(target)
 
         for doc in documents:

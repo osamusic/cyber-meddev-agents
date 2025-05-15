@@ -14,8 +14,11 @@ from .models import ClassificationConfig, KeywordExtractionConfig
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load environment variables
 load_dotenv()
 logger.info("Loading environment variables from .env file")
+
+# Configure OpenAI or OpenRouter
 if os.getenv("OPENROUTER_API_KEY"):
     openai.api_type = "openrouter"
     openai.api_key = os.getenv("OPENROUTER_API_KEY")
@@ -37,117 +40,244 @@ client = OpenAI(
     base_url=API_URL,
 )
 
-max_document_size = os.getenv("MAX_DOCUMENT_SIZE", 3000)
+# Maximum size of document text to send in prompts
+max_document_size = int(os.getenv("MAX_DOCUMENT_SIZE", 3000))
 
 
 def normalize_json(raw: str) -> str:
     """
-    JSON風の文字列から有効なJSON部分だけを抽出し、キーの修正も行う。
+    Extract only the valid JSON part from a JSON-like string and correct duplicated braces.
     """
     try:
-        # JSON部分だけを切り出す
+        # Extract only the JSON substring
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start == -1 or end == -1:
             raise ValueError("Braces not found")
         json_candidate = raw[start:end]
-        # 最後に } } が重複していれば1つに
+        # If there are duplicate closing braces '}}' at the end, reduce to one
         json_candidate = re.sub(r"\}\s*\}\s*$", "}", json_candidate)
         return json_candidate
     except Exception as e:
-        logger.error(f"JSON正規化エラー: {str(e)}")
-        return raw  # 失敗した場合はそのまま返す
+        logger.error(f"JSON normalization error: {str(e)}")
+        return raw  # Return as is if normalization fails
 
 
 class DocumentClassifier:
-    """医療機器サイバーセキュリティドキュメント分類器"""
+    """Medical Device Cybersecurity Document Classifier"""
 
     def __init__(self):
-        """分類器の初期化"""
+        """Initialize the classifier."""
         self.openai_model = MODEL
-#        self.api_key = os.getenv("OPENAI_API_KEY")
 
+        # NIST CSF categories
         self.nist_categories = {
-            "ID": "Identify（特定）",
-            "PR": "Protect（防御）",
-            "DE": "Detect（検知）",
-            "RS": "Respond（対応）",
-            "RC": "Recover（復旧）"
+            "ID": "Identify",
+            "PR": "Protect",
+            "DE": "Detect",
+            "RS": "Respond",
+            "RC": "Recover"
         }
 
+        # IEC 62443 Foundational Requirements
         self.iec_categories = {
-            "FR1": "Identification and authentication control（識別と認証制御）",
-            "FR2": "Use control（使用制御）",
-            "FR3": "System integrity（システム完全性）",
-            "FR4": "Data confidentiality（データ機密性）",
-            "FR5": "Restricted data flow（制限されたデータフロー）",
-            "FR6": "Timely response to events（イベントへのタイムリーな対応）",
-            "FR7": "Resource availability（リソース可用性）"
+            "FR1": "Identification and authentication control",
+            "FR2": "Use control",
+            "FR3": "System integrity",
+            "FR4": "Data confidentiality",
+            "FR5": "Restricted data flow",
+            "FR6": "Timely response to events",
+            "FR7": "Resource availability"
         }
 
     def classify_document(self, document_text: str, config: ClassificationConfig) -> Dict[str, Any]:
-        """ドキュメントをNISTとIECフレームワークに基づいて分類"""
-        result = {
+        """
+        Classify the document based on NIST CSF and IEC 62443 frameworks,
+        extract security requirements, and identify keywords.
+        """
+        result: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "frameworks": {},
-            "keywords": [],
             "requirements": [],
+            "keywords": []
         }
+
+        # Extract security requirements
         requirements_list = self._extract_document(document_text)
         result["requirements"] = requirements_list
+
+        # Prepare text for framework classification
         requirements_text = ""
         if requirements_list:
-            requirements_text = "\n".join([f"{item.get('id', i + 1)}. 【{item.get('type', '必須')}】{item.get('text', '')}"
-                                           for i, item in enumerate(requirements_list)])
-        nist_result = self._classify_nist(requirements_text or document_text)
-        result["frameworks"]["NIST_CSF"] = nist_result
-        iec_result = self._classify_iec(requirements_text or document_text)
-        result["frameworks"]["IEC_62443"] = iec_result
-        keywords = self._extract_keywords(requirements_text or document_text, config.keyword_config)
-        result["keywords"] = keywords
+            requirements_text = "\n".join([
+                f"{item.get('id', i + 1)}. [{item.get('type', 'Mandatory')}] {item.get('text', '')}"
+                for i, item in enumerate(requirements_list)
+            ])
+
+        # Classify against NIST CSF
+        result["frameworks"]["NIST_CSF"] = self._classify_nist(requirements_text or document_text)
+
+        # Classify against IEC 62443
+        result["frameworks"]["IEC_62443"] = self._classify_iec(requirements_text or document_text)
+
+        # Extract keywords
+        result["keywords"] = self._extract_keywords(requirements_text or document_text, config.keyword_config)
+
         return result
 
-    def _extract_document(self, document_text: str) -> List[Dict[str, Any]]:
-        """セキュリティ要件の抽出"""
+    def _classify_nist(self, document_text: str) -> Dict[str, Any]:
+        """Classify text according to the NIST Cybersecurity Framework."""
         prompt = f"""
-        あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストには、セキュリティ対策に関する「推奨事項」および「必須要件（義務）」が含まれています。
-        この中から、セキュリティ上の**要求事項（セキュリティ対策）**を読み取り、以下の形式でリストアップしてください。
-        - 「必須」か「推奨」かを判断してください
-        - 原文の要点を簡潔にまとめてください（引用ではなく、整理された要求文として）
-        テキスト:
-        {document_text[:max_document_size]}
-        以下のJSON形式で回答してください。有効なJSONのみを返してください:
-        {{
-            "requirements": [
-                {{
-                    "id": 1,
-                    "type": "必須",
-                    "text": "ユーザー認証には多要素認証を用いること"
-                }},
-                {{
-                    "id": 2,
-                    "type": "推奨",
-                    "text": "外部インターフェースにはファイアウォールを設置すること"
-                }},
-                {{
-                    "id": 3,
-                    "type": "必須",
-                    "text": "ログは改ざん検知が可能な形式で保存すること"
-                }}
-            ]
-        }}
-        必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
-        """
+            You are an expert in medical device cybersecurity.
+            Analyze the following text and classify it into the NIST Cybersecurity Framework categories in English.
 
+            NIST Categories:
+            - ID: Identify (Asset Management, Business Environment, Governance, Risk Assessment, Risk Management Strategy)
+            - PR: Protect (Access Control, Awareness and Training, Data Security, Information Protection Processes and Procedures, Maintenance, Protective Technology)
+            - DE: Detect (Anomalies and Events, Continuous Security Monitoring, Detection Processes)
+            - RS: Respond (Response Planning, Communications, Analysis, Mitigation, Improvements)
+            - RC: Recover (Recovery Planning, Improvements, Communications)
+
+            Text:
+            {document_text[:max_document_size]}
+
+            Please respond with valid JSON only, without any extra text or line breaks, in the following format:
+            {{
+                "categories": {{
+                    "ID": {{ "score": 0, "reason": "reason" }},
+                    "PR": {{ "score": 0, "reason": "reason" }},
+                    "DE": {{ "score": 0, "reason": "reason" }},
+                    "RS": {{ "score": 0, "reason": "reason" }},
+                    "RC": {{ "score": 0, "reason": "reason" }}
+                }},
+                "primary_category": "MostRelevantCategoryCode",
+                "explanation": "Summary of analysis and reasoning"
+            }}
+            """
         try:
             response = client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"
-                    },
+                    {"role": "system", "content": "You are an expert in medical device cybersecurity. Please respond only in valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            json_text = normalize_json(response.choices[0].message.content)
+            return json.loads(json_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"NIST classification JSON parse error: {str(e)}")
+            return {
+                "categories": {k: {"score": 0, "reason": "Parse error"} for k in self.nist_categories},
+                "primary_category": "Error",
+                "explanation": f"An error occurred during JSON parsing: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"NIST classification error: {str(e)}")
+            return {
+                "categories": {k: {"score": 0, "reason": "Classification error"} for k in self.nist_categories},
+                "primary_category": "Error",
+                "explanation": f"An error occurred during classification: {str(e)}"
+            }
+
+    def _classify_iec(self, document_text: str) -> Dict[str, Any]:
+        """Classify text according to IEC 62443 Foundational Requirements."""
+        prompt = f"""
+            You are an expert in medical device cybersecurity.
+            Analyze the following text and classify it into the IEC 62443 Foundational Requirements in English.
+
+            IEC 62443 Foundational Requirements:
+            - FR1: Identification and authentication control
+            - FR2: Use control
+            - FR3: System integrity
+            - FR4: Data confidentiality
+            - FR5: Restricted data flow
+            - FR6: Timely response to events
+            - FR7: Resource availability
+
+            Text:
+            {document_text[:max_document_size]}
+
+            Please respond with valid JSON only, without any extra text or line breaks, in the following format:
+            {{
+                "requirements": {{
+                    "FR1": {{ "score": 0, "reason": "reason" }},
+                    "FR2": {{ "score": 0, "reason": "reason" }},
+                    "FR3": {{ "score": 0, "reason": "reason" }},
+                    "FR4": {{ "score": 0, "reason": "reason" }},
+                    "FR5": {{ "score": 0, "reason": "reason" }},
+                    "FR6": {{ "score": 0, "reason": "reason" }},
+                    "FR7": {{ "score": 0, "reason": "reason" }}
+                }},
+                "primary_requirement": "MostRelevantRequirementCode",
+                "explanation": "Summary of analysis and reasoning"
+            }}
+            """
+        try:
+            response = client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {"role": "system", "content": "You are an expert in medical device cybersecurity. Please respond only in valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            json_text = normalize_json(response.choices[0].message.content)
+            return json.loads(json_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"IEC classification JSON parse error: {str(e)}")
+            return {
+                "requirements": {k: {"score": 0, "reason": "Parse error"} for k in self.iec_categories},
+                "primary_requirement": "Error",
+                "explanation": f"An error occurred during JSON parsing: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"IEC classification error: {str(e)}")
+            return {
+                "requirements": {k: {"score": 0, "reason": "Classification error"} for k in self.iec_categories},
+                "primary_requirement": "Error",
+                "explanation": f"An error occurred during classification: {str(e)}"
+            }
+
+    def _extract_document(self, document_text: str) -> List[Dict[str, Any]]:
+        """Extract security requirements from the document text."""
+        prompt = f"""
+            You are an expert in medical device cybersecurity.
+            The text below contains “Recommendations” and “Mandatory requirements (Obligations)” related to security measures.
+            From this text, extract the security **requirements (security measures)** and list them in the following format:
+            - Specify whether each requirement is “Mandatory” or “Recommended”
+            - Summarize the original point concisely (not a direct quote, but as a structured requirement statement)
+            Text:
+            {document_text[:max_document_size]}
+            Please respond in the following JSON format. Return only valid JSON:
+
+            {{
+                "requirements": [
+                    {{
+                        "id": 1,
+                        "type": "Mandatory",
+                        "text": "Use multi-factor authentication for user authentication"
+                    }},
+                    {{
+                        "id": 2,
+                        "type": "Recommended",
+                        "text": "Install a firewall on external interfaces"
+                    }},
+                    {{
+                        "id": 3,
+                        "type": "Mandatory",
+                        "text": "Store logs in a tamper-evident format"
+                    }}
+                ]
+            }}
+            """
+        try:
+            response = client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {"role": "system", "content": "You are an expert in medical device cybersecurity."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
@@ -156,246 +286,44 @@ class DocumentClassifier:
             json_text = normalize_json(response.choices[0].message.content)
             result = json.loads(json_text)
             return result.get("requirements", [])
-        except json.JSONDecodeError as e:
-            logger.error(f"要件抽出JSON解析エラー: {str(e)}")
-            logger.error(f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}")
+        except Exception as e:
+            logger.error(f"Requirement extraction error: {str(e)}")
             return []
-        except Exception as e:
-            logger.error(f"抽出エラー: {str(e)}")
-            return []
-
-    def _classify_nist(self, document_text: str) -> Dict[str, Any]:
-        """NISTサイバーセキュリティフレームワークに基づいて分類"""
-        prompt = f"""
-        あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストを分析し、NISTサイバーセキュリティフレームワークのカテゴリに日本語で分類してください。
-
-        NISTカテゴリ:
-        - ID: Identify（特定）- 資産管理、ビジネス環境、ガバナンス、リスク評価、リスク管理戦略
-        - PR: Protect（防御）- アクセス制御、意識向上とトレーニング、データセキュリティ、情報保護プロセス、保守、保護技術
-        - DE: Detect（検知）- 異常とイベント、継続的なセキュリティモニタリング、検出プロセス
-        - RS: Respond（対応）- 対応計画、コミュニケーション、分析、緩和、改善
-        - RC: Recover（復旧）- 復旧計画、改善、コミュニケーション
-
-        テキスト:
-        {document_text[:max_document_size]}
-
-        各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
-        また、その判断理由を簡潔に説明してください。
-
-        以下のJSON形式を1つだけ回答してください。有効なJSONのみを返してください。
-        {{
-            "categories": {{
-                "ID": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "PR": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "DE": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "RS": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "RC": {{
-                    "score": 0,
-                    "reason": "理由"
-                }}
-            }},
-            "primary_category": "最も関連性の高いカテゴリコード",
-            "explanation": "全体的な分析と判断理由の要約"
-        }}
-        必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model=self.openai_model,
-                messages=[
-                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
-            json_text = normalize_json(response.choices[0].message.content)
-            result = json.loads(json_text)
-            return result
-        except json.JSONDecodeError as e:
-            logger.error(f"NIST分類JSON解析エラー: {str(e)}")
-            logger.error(
-                f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}"
-            )
-            return {
-                "categories": {
-                    "ID": {"score": 0, "reason": "JSON解析エラー"},
-                    "PR": {"score": 0, "reason": "JSON解析エラー"},
-                    "DE": {"score": 0, "reason": "JSON解析エラー"},
-                    "RS": {"score": 0, "reason": "JSON解析エラー"},
-                    "RC": {"score": 0, "reason": "JSON解析エラー"}
-                },
-                "primary_category": "エラー",
-                "explanation": f"JSON解析中にエラーが発生しました: {str(e)}"
-            }
-        except Exception as e:
-            logger.error(f"NIST分類エラー: {str(e)}")
-            return {
-                "categories": {
-                    "ID": {"score": 0, "reason": "分類エラー"},
-                    "PR": {"score": 0, "reason": "分類エラー"},
-                    "DE": {"score": 0, "reason": "分類エラー"},
-                    "RS": {"score": 0, "reason": "分類エラー"},
-                    "RC": {"score": 0, "reason": "分類エラー"}
-                },
-                "primary_category": "エラー",
-                "explanation": f"分類処理中にエラーが発生しました: {str(e)}"
-            }
-
-    def _classify_iec(self, document_text: str) -> Dict[str, Any]:
-        """IEC 62443に基づいて分類"""
-        prompt = f"""
-        あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストを分析し、IEC 62443の基本要件（Foundational Requirements）に日本語で分類してください。
-
-        IEC 62443の基本要件（Foundational Requirements）:
-        - FR1: Identification and authentication control (識別と認証制御)
-        - FR2: Use control (使用制御)
-        - FR3: System integrity (システム完全性)
-        - FR4: Data confidentiality（データ機密性）
-        - FR5: Restricted data flow（制限されたデータフロー）
-        - FR6: Timely response to events（イベントへのタイムリーな対応）
-        - FR7: Resource availability（リソース可用性）
-
-        テキスト:
-        {document_text[:max_document_size]}
-
-        各カテゴリの関連度を0から10の数値で評価し、最も関連性の高いカテゴリを特定してください。
-        また、その判断理由を簡潔に説明してください。
-
-        以下のJSON形式を1つだけ回答してください。有効なJSONのみを返してください。
-        {{
-            "requirements": {{
-                "FR1": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "FR2": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "FR3": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "FR4": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "FR5": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "FR6": {{
-                    "score": 0,
-                    "reason": "理由"
-                }},
-                "FR7": {{
-                    "score": 0,
-                    "reason": "理由"
-                }}
-            }},
-            "primary_requirement": "最も関連性の高い要件コード",
-            "explanation": "全体的な分析と判断理由の要約"
-        }}
-        必ず有効なJSON形式で回答してください。余分なテキストや改行を含めないでください。
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model=self.openai_model,
-                messages=[
-                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。有効なJSON形式でのみ回答してください。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
-            json_text = normalize_json(response.choices[0].message.content)
-            result = json.loads(json_text)
-            return result
-        except json.JSONDecodeError as e:
-            logger.error(f"IEC分類JSON解析エラー: {str(e)}")
-            logger.error(f"レスポンス内容: {response.choices[0].message.content if 'response' in locals() and hasattr(response, 'choices') else 'レスポンスなし'}")
-            return {
-                "requirements": {
-                    "FR1": {"score": 0, "reason": "JSON解析エラー"},
-                    "FR2": {"score": 0, "reason": "JSON解析エラー"},
-                    "FR3": {"score": 0, "reason": "JSON解析エラー"},
-                    "FR4": {"score": 0, "reason": "JSON解析エラー"},
-                    "FR5": {"score": 0, "reason": "JSON解析エラー"},
-                    "FR6": {"score": 0, "reason": "JSON解析エラー"},
-                    "FR7": {"score": 0, "reason": "JSON解析エラー"}
-                },
-                "primary_requirement": "エラー",
-                "explanation": f"JSON解析中にエラーが発生しました: {str(e)}"
-            }
-        except Exception as e:
-            logger.error(f"IEC分類エラー: {str(e)}")
-            return {
-                "requirements": {
-                    "FR1": {"score": 0, "reason": "分類エラー"},
-                    "FR2": {"score": 0, "reason": "分類エラー"},
-                    "FR3": {"score": 0, "reason": "分類エラー"},
-                    "FR4": {"score": 0, "reason": "分類エラー"},
-                    "FR5": {"score": 0, "reason": "分類エラー"},
-                    "FR6": {"score": 0, "reason": "分類エラー"},
-                    "FR7": {"score": 0, "reason": "分類エラー"}
-                },
-                "primary_requirement": "エラー",
-                "explanation": f"分類処理中にエラーが発生しました: {str(e)}"
-            }
 
     def _extract_keywords(self, document_text: str, config: KeywordExtractionConfig) -> List[Dict[str, Any]]:
-        """セキュリティキーワードの抽出"""
+        """Extract critical security keywords related to medical device cybersecurity."""
         prompt = f"""
-        あなたは医療機器サイバーセキュリティの専門家です。
-        以下のテキストから医療機器のサイバーセキュリティに関連する重要なキーワードを抽出してください。
+            You are an expert in medical device cybersecurity.
+            Extract important keywords related to medical device cybersecurity from the text below.
 
-        テキスト:
-        {document_text[:max_document_size]}
+            Text:
+            {document_text[:max_document_size]}
 
+            Extract keywords that meet the following criteria:
+            - Related to medical device cybersecurity
+            - High importance
+            - At least {config.min_keyword_length} characters long
+            - Up to {config.max_keywords} keywords
 
-        以下の条件を満たすキーワードを抽出してください:
-        - 医療機器のサイバーセキュリティに関連していること
-        - 重要度が高いこと
-        - 最低{config.min_keyword_length}文字以上であること
-        - 最大{config.max_keywords}個まで
+            For each keyword, include importance (1-10) and a brief description.
 
-        各キーワードについて、重要度（1-10）と簡単な説明を付けてください。
+            Please respond in the following JSON format. Return only valid JSON, without extra text or commas:
 
-        以下のJSON形式で回答してください。有効なJSONのみを返してください。
-        特に余分なテキスト、説明、コンマの使用に注意してください:
-        {{
-            "keywords": [
-                {{
-                    "keyword": "キーワード1",
-                    "importance": 1,
-                    "description": "説明"
-                }}
-            ]
-        }}
-        """
-
+            {{
+                "keywords": [
+                    {{
+                        "keyword": "keyword1",
+                        "importance": 10,
+                        "description": "Description"
+                    }}
+                ]
+            }}
+            """
         try:
             response = client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": "あなたは医療機器サイバーセキュリティの専門家です。"},
+                    {"role": "system", "content": "You are an expert in medical device cybersecurity. Please respond only in valid JSON format."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
@@ -405,5 +333,5 @@ class DocumentClassifier:
             result = json.loads(json_text)
             return result.get("keywords", [])
         except Exception as e:
-            logger.error(f"キーワード抽出エラー: {str(e)}")
-            return [{"keyword": "エラー", "importance": 0, "description": f"キーワード抽出中にエラーが発生しました: {str(e)}"}]
+            logger.error(f"Keyword extraction error: {str(e)}")
+            return [{"keyword": "error", "importance": 0, "description": f"An error occurred during keyword extraction: {str(e)}"}]

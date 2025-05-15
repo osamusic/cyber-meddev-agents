@@ -10,10 +10,11 @@ from .indexer import DocumentIndexer
 
 router = APIRouter(
     prefix="/index",
-    tags=["インデックス"],
+    tags=["index"],  # Authenticated users only
     dependencies=[Depends(get_current_active_user)]
 )
 
+# Initialize the document indexer with the storage directory
 indexer = DocumentIndexer(storage_dir="./storage")
 
 
@@ -23,8 +24,10 @@ async def index_documents(
     db: SQLAlchemySession = Depends(get_db)
 ):
     """Index all documents in the database"""
+    # Retrieve all documents
     documents = db.query(DocumentModel).all()
 
+    # Prepare document payloads for indexing
     docs_to_index = []
     for doc in documents:
         docs_to_index.append({
@@ -38,14 +41,16 @@ async def index_documents(
             )
         })
 
-    num_indexed = indexer.index_documents(docs_to_index, config)
+    # Perform indexing
+    stats = indexer.index_documents(docs_to_index, config)
 
+    # Build response message
     result = {
         "message": (
-            f"{num_indexed['indexed']} ドキュメントがインデックス化されました"
-            f"（{num_indexed['skipped']} ドキュメントはスキップされました）"
+            f"{stats['indexed']} documents have been indexed"
+            f" ({stats['skipped']} documents were skipped)"
         ),
-        "stats": num_indexed
+        "stats": stats
     }
 
     return result
@@ -54,12 +59,10 @@ async def index_documents(
 @router.post("/search", response_model=List[Dict[str, Any]])
 async def search_index(query: SearchQuery):
     """Search the index for documents matching the query"""
-    results = indexer.search(query.query, query.top_k)
-    return results
+    return indexer.search(query.query, query.top_k)
 
 
 @router.get("/stats", response_model=IndexStats)
 async def get_index_stats():
-    """Get statistics about the index"""
-    stats = indexer.get_stats()
-    return stats
+    """Get statistics about the document index"""
+    return indexer.get_stats()

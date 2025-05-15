@@ -14,8 +14,8 @@ from llama_index.core import (
     StorageContext,
     load_index_from_storage,
 )
-from llama_index.llms.openai import OpenAI
-from llama_index.llms.openrouter import OpenRouter
+from llama_index.llms.openai import OpenAI as LlamaOpenAI
+from llama_index.llms.openrouter import OpenRouter as LlamaOpenRouter
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -25,33 +25,34 @@ from .models import IndexConfig, IndexStats
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load environment variables
 load_dotenv()
 
+# Configure LLM and embedding models based on environment
 if os.getenv("OPENROUTER_API_KEY"):
     openai.api_type = "openrouter"
     openai.api_key = os.getenv("OPENROUTER_API_KEY")
     MODEL = "deepseek/deepseek-r1:free"
     logger.info(f"Using OpenRouter model: {MODEL}")
-    Settings.llm = OpenRouter(model=MODEL)
+    Settings.llm = LlamaOpenRouter(model=MODEL)
     Settings.embed_model = HuggingFaceEmbedding()
 else:
     openai.api_key = os.getenv("OPENAI_API_KEY")
     openai.api_type = "openai"
     MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     logger.info(f"Using OpenAI model: {MODEL}")
-    Settings.llm = OpenAI(model=MODEL)
+    Settings.llm = LlamaOpenAI(model=MODEL)
     Settings.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
 
 if not openai.api_key:
     logger.warning("API_KEY environment variable not set")
 
-
-# グローバルな既定値を設定
-
+# Global default settings
 Settings.node_parser = SimpleNodeParser(chunk_size=256, chunk_overlap=20)
 Settings.num_output = 512
-Settings.context_window = os.getenv("MAX_DOCUMENT_SIZE", 4000)
+Settings.context_window = int(os.getenv("MAX_DOCUMENT_SIZE", 4000))
 
+# Patch httpx client to remove 'proxies' parameter
 original_client_init = httpx.Client.__init__
 
 
@@ -81,7 +82,7 @@ class DocumentIndexer:
     """Indexer for medical device cybersecurity documents"""
 
     def __init__(self, storage_dir: str = "./storage"):
-        """Initialize the indexer with storage directory"""
+        """Initialize the indexer with a storage directory"""
         self.storage_dir = storage_dir
         self.index_dir = os.path.join(storage_dir, "index")
         self.documents_dir = os.path.join(storage_dir, "documents")
@@ -92,9 +93,10 @@ class DocumentIndexer:
         self.index = self._load_or_create_index()
 
     def _load_or_create_index(self) -> VectorStoreIndex:
-        """Load existing index or create a new one"""
+        """Load an existing index or create a new one"""
         try:
-            if os.path.exists(os.path.join(self.index_dir, "docstore.json")):
+            index_file = os.path.join(self.index_dir, "docstore.json")
+            if os.path.exists(index_file):
                 logger.info("Loading existing index...")
                 storage_context = StorageContext.from_defaults(persist_dir=self.index_dir)
                 return load_index_from_storage(storage_context=storage_context)
@@ -102,159 +104,130 @@ class DocumentIndexer:
                 logger.info("Creating new index...")
                 return self._create_empty_index()
         except Exception as e:
-            logger.error(f"Error loading index: {str(e)}")
+            logger.error(f"Error loading index: {e}")
             return self._create_empty_index()
 
     def _create_empty_index(self) -> VectorStoreIndex:
-        """Create a new empty index"""
+        """Create a new empty vector store index"""
         try:
             logger.info("Creating empty vector store index...")
-            os.makedirs(self.index_dir, exist_ok=True)
             storage_context = StorageContext.from_defaults()
             index = VectorStoreIndex.from_documents([], storage_context=storage_context)
             index.storage_context.persist(persist_dir=self.index_dir)
             logger.info("Empty index created successfully")
             return index
         except Exception as e:
-            logger.error(f"Error creating empty index: {str(e)}")
+            logger.error(f"Error creating empty index: {e}")
 
-    def index_documents(self, documents: List[Dict[str, Any]], config: Optional[IndexConfig] = None) -> Dict[str, int]:
-        """Index a list of documents"""
+    def index_documents(
+        self,
+        documents: List[Dict[str, Any]],
+        config: Optional[IndexConfig] = None
+    ) -> Dict[str, int]:
+        """Index a list of documents and track how many were indexed or skipped"""
         if not documents:
             logger.warning("No documents to index")
             return {"indexed": 0, "skipped": 0, "total": 0}
 
-        if config is None:
-            config = IndexConfig()
-
+        config = config or IndexConfig()
         if self.index is None:
-            logger.warning("Index is None, attempting to recreate...")
+            logger.warning("Index is None, recreating index...")
             self.index = self._load_or_create_index()
 
-        if not hasattr(self.index, 'insert_nodes') or not callable(getattr(self.index, 'insert_nodes', None)):
-            logger.error("Index does not have a valid insert_nodes method")
-            raise RuntimeError("Invalid index structure, unable to insert documents")
+        # Validate index methods
+        if not hasattr(self.index, 'insert_nodes'):
+            logger.error("Index missing 'insert_nodes' method")
+            raise RuntimeError("Invalid index structure, cannot insert documents")
 
-        if not hasattr(self.index, 'storage_context'):
-            logger.warning("Index does not have a storage_context attribute, some functionality may be limited")
+        existing_docs = set()
+        if not config.force_reindex and os.path.exists(self.documents_dir):
+            for fname in os.listdir(self.documents_dir):
+                if fname.endswith('.json'):
+                    existing_docs.add(fname.replace('.json', ''))
+            logger.info(f"Found {len(existing_docs)} already indexed documents")
 
-        try:
-            existing_docs = set()
-            if not config.force_reindex and os.path.exists(self.documents_dir):
-                for filename in os.listdir(self.documents_dir):
-                    if filename.endswith('.json'):
-                        doc_id = filename.replace('.json', '')
-                        existing_docs.add(doc_id)
-                logger.info(f"Found {len(existing_docs)} already indexed documents")
+        new_docs, skipped = [], []
+        llama_docs = []
+        for doc in documents:
+            doc_id = doc.get("doc_id", "")
+            content = doc.get("content", "")
+            if not doc_id:
+                logger.warning("Skipping document with empty doc_id")
+                continue
+            if not config.force_reindex and doc_id in existing_docs:
+                logger.info(f"Skipping already indexed document: {doc_id}")
+                skipped.append(doc_id)
+                continue
 
-            new_docs = []
-            skipped_docs = []
+            # Save raw document
+            doc_path = os.path.join(self.documents_dir, f"{doc_id}.json")
+            with open(doc_path, "w") as f:
+                json.dump(doc, f)
 
-            llama_docs = []
-            for doc in documents:
-                doc_id = doc.get("doc_id", "")
-                content = doc.get("content", "")
+            metadata = {
+                "doc_id": doc_id,
+                "title": doc.get("title", ""),
+                "url": doc.get("url", ""),
+                "source_type": doc.get("source_type", ""),
+                "downloaded_at": doc.get("downloaded_at", datetime.now().isoformat())
+            }
+            llama_docs.append(Document(text=content, metadata=metadata))
+            new_docs.append(doc_id)
 
-                if not doc_id:
-                    logger.warning("Skipping document with empty doc_id")
-                    continue
+        # Insert new documents into the index
+        if llama_docs:
+            logger.info(f"Indexing {len(llama_docs)} new documents...")
+            self.index.insert_nodes(llama_docs)
+            logger.info(f"Persisting index to {self.index_dir}...")
+            self.index.storage_context.persist(persist_dir=self.index_dir)
+        else:
+            logger.info("No new documents to index")
 
-                if not config.force_reindex and doc_id in existing_docs:
-                    logger.info(f"Skipping already indexed document: {doc_id}")
-                    skipped_docs.append(doc_id)
-                    continue
-
-                metadata = {
-                    "doc_id": doc_id,
-                    "title": doc.get("title", ""),
-                    "url": doc.get("url", ""),
-                    "source_type": doc.get("source_type", ""),
-                    "downloaded_at": doc.get("downloaded_at", datetime.now().isoformat())
-                }
-
-                doc_path = os.path.join(self.documents_dir, f"{doc_id}.json")
-                with open(doc_path, "w") as f:
-                    json.dump(doc, f)
-
-                llama_docs.append(Document(text=content, metadata=metadata))
-                new_docs.append(doc_id)
-
-            if llama_docs:
-                logger.info(f"Indexing {len(llama_docs)} new documents...")
-                self.index.insert_nodes(llama_docs)
-
-                logger.info(f"Persisting index to {self.index_dir}...")
-                if hasattr(self.index, 'storage_context') and self.index.storage_context is not None:
-                    self.index.storage_context.persist(persist_dir=self.index_dir)
-                else:
-                    logger.warning("Index does not have a storage_context, skipping persistence")
-            else:
-                logger.info("No new documents to index")
-
-            return {"indexed": len(new_docs), "skipped": len(skipped_docs), "total": len(documents)}
-        except Exception as e:
-            logger.error(f"Error indexing documents: {str(e)}")
-            raise
+        return {"indexed": len(new_docs), "skipped": len(skipped), "total": len(documents)}
 
     def to_markdown(self, text: str) -> str:
+        """Convert raw text lines into markdown format with headings and lists"""
         lines = text.splitlines()
-        md_lines = []
-
+        md = []
         for line in lines:
             line = line.strip()
-
             if not line:
-                md_lines.append("")
+                md.append("")
                 continue
-
-            # [SECTION: Xxxx] → ### SECTION: Xxxx
-            section_match = re.match(r"\[SECTION:\s*(.*?)\]", line)
-            if section_match:
-                md_lines.append(f"### SECTION: {section_match.group(1)}")
+            # [SECTION: X] -> ### SECTION: X
+            sec = re.match(r"\[SECTION:\s*(.*?)\]", line)
+            if sec:
+                md.append(f"### SECTION: {sec.group(1)}")
                 continue
-
-            # [PAGE_15] → Markdown見出し
+            # [PAGE_15] -> ### PAGE_15
             if re.match(r"^\[PAGE_[0-9]+\]", line):
-                md_lines.append(f"### {line.strip('[]')}")
+                md.append(f"### {line.strip('[]')}")
                 continue
-
-            # 見出し番号（例: 5.4 Title）
+            # Numeric headings e.g., 5.4 Title
             if re.match(r"^\d+(\.\d+)*\s+[A-Z].*", line):
-                md_lines.append(f"### {line}")
+                md.append(f"### {line}")
                 continue
-
-            # サブ見出し番号（例: 5.5.1 Labeling）
+            # Subheadings e.g., 5.5.1 Labeling
             if re.match(r"^\d+\.\d+\.\d+\s+.*", line):
-                md_lines.append(f"#### {line}")
+                md.append(f"#### {line}")
                 continue
-
-            #  のような箇条書き
-            if line.startswith(""):
-                md_lines.append(f"- {line[1:].strip()}")
+            # Bullet list starting with special character
+            if line.startswith("") or line.startswith(" •"):
+                md.append(f"- {line.lstrip(' •')} ")
                 continue
-
-            # • のような箇条書き
-            if line.startswith(" • "):
-                md_lines.append(f"- {line[1:].strip()}")
-                continue
-
-            # : で終わる見出し風の行 → 強調
+            # Lines ending with colon -> bold
             if re.match(r"^[A-Za-z\s]+:$", line):
-                md_lines.append(f"**{line.strip()}**")
+                md.append(f"**{line}**")
                 continue
-
-            # URL
+            # URLs -> block quote
             if "http" in line:
-                md_lines.append(f"> ({line.strip()})")
+                md.append(f"> ({line})")
                 continue
-
-            # 通常文・改行補助
-            md_lines.append(line)
-
-        return "\n".join(md_lines)
+            md.append(line)
+        return "\n".join(md)
 
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Search the index for documents matching the query"""
+        """Search the index for relevant documents"""
         if not self.index:
             logger.warning("No index available for search")
             return []
@@ -264,56 +237,41 @@ class DocumentIndexer:
         for scored_node in response.source_nodes:
             node = scored_node.node
             try:
-                text = node.get_content()
-            except Exception as e:
-                logger.warning(f"Failed to extract content from node. Node type: {type(node)}; Error: {str(e)}")
-                text = "No text content available for this node"
-
+                content = node.get_content()
+            except Exception:
+                content = "No text content available"
             results.append({
-                "text": self.to_markdown(text),
+                "text": self.to_markdown(content),
                 "score": scored_node.score,
                 "metadata": getattr(node, "metadata", {})
             })
         return results
 
     def get_stats(self) -> IndexStats:
-        """Get statistics about the index"""
-        if not self.index:
-            return IndexStats(
-                total_documents=0,
-                total_chunks=0,
-                last_updated=datetime.now()
-            )
-
-        doc_count = len(os.listdir(self.documents_dir))
-
-        # チャンク数（＝インデックスに載っているノード数）を取得
+        """Return statistics about the index and stored documents"""
+        # Count stored documents
+        total_docs = len(os.listdir(self.documents_dir))
+        # Determine total chunks/nodes in the index structure
         total_chunks = 0
         struct = getattr(self.index, "index_struct", None)
         if struct:
             if hasattr(struct, "node_ids"):
-                # VectorIndex の場合はこちら
                 total_chunks = len(struct.node_ids)
             elif hasattr(struct, "nodes"):
-                # 他のインデックス構造で使われる場合
                 total_chunks = len(struct.nodes)
             elif hasattr(struct, "_node_ids"):
-                # まれにプライベート属性の場合
                 total_chunks = len(struct._node_ids)
-        # どれにも当てはまらなければフォールバック
         if total_chunks == 0:
-            logger.warning("Unable to determine total chunks from index structure, falling back to docstore")
+            logger.warning("Unable to determine total chunks, falling back to docstore size")
             total_chunks = len(self.index.docstore.docs)
-
-        if os.path.exists(os.path.join(self.index_dir, "docstore.json")):
-            last_updated = datetime.fromtimestamp(
-                os.path.getmtime(os.path.join(self.index_dir, "docstore.json"))
-            )
+        # Get last updated timestamp
+        index_file = os.path.join(self.index_dir, "docstore.json")
+        if os.path.exists(index_file):
+            last_updated = datetime.fromtimestamp(os.path.getmtime(index_file))
         else:
             last_updated = datetime.now()
-
         return IndexStats(
-            total_documents=doc_count,
+            total_documents=total_docs,
             total_chunks=total_chunks,
             last_updated=last_updated
         )

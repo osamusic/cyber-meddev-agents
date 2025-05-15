@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session as SQLAlchemySession
 from typing import List, Optional, Dict, Any
 import json
 import logging
-from datetime import datetime
 
 from ..db.database import get_db
 from ..db.models import Guideline as GuidelineModel, GuidelineKeyword, ClassificationResult
@@ -14,40 +13,40 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/guidelines",
-    tags=["ガイドライン"],
-    dependencies=[Depends(get_current_active_user)]
+    tags=["guidelines"],
+    dependencies=[Depends(get_current_active_user)]  # All authenticated users can access
 )
 
 
-def get_classification_data(guideline_id: int, db: SQLAlchemySession) -> Optional[Dict[str, Any]]:
-    """Get classification data for a guideline"""
+def _get_classification_data(guideline_id: int, db: SQLAlchemySession) -> Optional[Dict[str, Any]]:
+    """Retrieve classification data for a guideline"""
     try:
-        classification = db.query(ClassificationResult).filter(
-            ClassificationResult.document_id == guideline_id
-        ).order_by(ClassificationResult.created_at.desc()).first()
-
+        classification = (
+            db.query(ClassificationResult)
+              .filter(ClassificationResult.document_id == guideline_id)
+              .order_by(ClassificationResult.created_at.desc())
+              .first()
+        )
         if not classification:
             return None
 
         result = json.loads(classification.result_json)
-
-        classification_data = {
+        data: Dict[str, Any] = {
             "created_at": classification.created_at.isoformat(),
-            "requirements": result.get("requirements", ""),
+            "requirements": result.get("requirements", []),
             "keywords": result.get("keywords", []),
         }
-
-        if "frameworks" in result and "NIST_CSF" in result["frameworks"]:
-            nist_data = result["frameworks"]["NIST_CSF"]
-            classification_data["nist"] = nist_data.get("primary_category")
-
-        if "frameworks" in result and "IEC_62443" in result["frameworks"]:
-            iec_data = result["frameworks"]["IEC_62443"]
-            classification_data["iec"] = iec_data.get("primary_requirement")
-
-        return classification_data
+        # Include NIST primary category if available
+        nist = result.get("frameworks", {}).get("NIST_CSF", {})
+        if nist:
+            data["nist"] = nist.get("primary_category")
+        # Include IEC primary requirement if available
+        iec = result.get("frameworks", {}).get("IEC_62443", {})
+        if iec:
+            data["iec"] = iec.get("primary_requirement")
+        return data
     except Exception as e:
-        logger.error(f"Error getting classification data for guideline {guideline_id}: {str(e)}")
+        logger.error(f"Error fetching classification data for guideline {guideline_id}: {e}")
         return None
 
 
@@ -60,9 +59,8 @@ async def get_guidelines(
     limit: int = 100,
     db: SQLAlchemySession = Depends(get_db)
 ):
-    """Get guidelines with optional filtering"""
+    """Retrieve guidelines with optional filters"""
     query = db.query(GuidelineModel)
-
     if category:
         query = query.filter(GuidelineModel.category == category)
     if standard:
@@ -71,100 +69,87 @@ async def get_guidelines(
         query = query.filter(GuidelineModel.region == region)
 
     guidelines = query.offset(skip).limit(limit).all()
-
-    result = []
-    for guideline in guidelines:
-        keywords = [kw.keyword for kw in guideline.keywords]
-        guideline_dict = {
-            "id": guideline.id,
-            "guideline_id": guideline.guideline_id,
-            "category": guideline.category,
-            "standard": guideline.standard,
-            "control_text": guideline.control_text,
-            "source_url": guideline.source_url,
-            "region": guideline.region,
+    results: List[Dict[str, Any]] = []
+    for g in guidelines:
+        keywords = [kw.keyword for kw in g.keywords]
+        item = {
+            "id": g.id,
+            "guideline_id": g.guideline_id,
+            "category": g.category,
+            "standard": g.standard,
+            "control_text": g.control_text,
+            "source_url": g.source_url,
+            "region": g.region,
             "keywords": keywords
         }
-
-        classification_data = get_classification_data(guideline.id, db)
-        if classification_data:
-            guideline_dict["classification"] = classification_data
-
-        result.append(guideline_dict)
-
-    return result
+        data = _get_classification_data(g.id, db)
+        if data:
+            item["classification"] = data
+        results.append(item)
+    return results
 
 
 @router.get("/categories")
 async def get_categories(db: SQLAlchemySession = Depends(get_db)):
-    """Get all unique categories"""
-    logger.info("カテゴリー一覧を取得中")
+    """Get all unique guideline categories"""
+    logger.info("Fetching guideline categories")
     categories = db.query(GuidelineModel.category).distinct().all()
-    result = [cat[0] for cat in categories if cat[0]]
-    logger.info(f"取得したカテゴリー: {result}")
+    result = [c[0] for c in categories if c[0]]
+    logger.info(f"Categories fetched: {result}")
     return result
 
 
 @router.get("/standards")
 async def get_standards(db: SQLAlchemySession = Depends(get_db)):
-    """Get all unique standards"""
-    logger.info("標準規格一覧を取得中")
+    """Get all unique guideline standards"""
+    logger.info("Fetching guideline standards")
     standards = db.query(GuidelineModel.standard).distinct().all()
-    result = [std[0] for std in standards if std[0]]
-    logger.info(f"取得した標準規格: {result}")
+    result = [s[0] for s in standards if s[0]]
+    logger.info(f"Standards fetched: {result}")
     return result
 
 
 @router.get("/regions")
 async def get_regions(db: SQLAlchemySession = Depends(get_db)):
-    """Get all unique regions"""
-    logger.info("地域一覧を取得中")
+    """Get all unique guideline regions"""
+    logger.info("Fetching guideline regions")
     regions = db.query(GuidelineModel.region).distinct().all()
-    result = [reg[0] for reg in regions if reg[0]]
-    logger.info(f"取得した地域: {result}")
+    result = [r[0] for r in regions if r[0]]
+    logger.info(f"Regions fetched: {result}")
     return result
 
 
 @router.post("/search", response_model=List[Guideline])
-async def search_guidelines(
-    search: GuidelineSearch,
-    db: SQLAlchemySession = Depends(get_db)
-):
-    """Search guidelines by text and optional filters"""
+async def search_guidelines(search: GuidelineSearch, db: SQLAlchemySession = Depends(get_db)):
+    """Search guidelines by text and filters"""
     query = db.query(GuidelineModel).filter(
         GuidelineModel.control_text.contains(search.query)
     )
-
     if search.category:
         query = query.filter(GuidelineModel.category == search.category)
     if search.standard:
         query = query.filter(GuidelineModel.standard == search.standard)
     if search.region:
         query = query.filter(GuidelineModel.region == search.region)
-
     guidelines = query.all()
-
-    result = []
-    for guideline in guidelines:
-        keywords = [kw.keyword for kw in guideline.keywords]
-        guideline_dict = {
-            "id": guideline.id,
-            "guideline_id": guideline.guideline_id,
-            "category": guideline.category,
-            "standard": guideline.standard,
-            "control_text": guideline.control_text,
-            "source_url": guideline.source_url,
-            "region": guideline.region,
+    results: List[Dict[str, Any]] = []
+    for g in guidelines:
+        keywords = [kw.keyword for kw in g.keywords]
+        item = {
+            "id": g.id,
+            "guideline_id": g.guideline_id,
+            "category": g.category,
+            "standard": g.standard,
+            "control_text": g.control_text,
+            "source_url": g.source_url,
+            "region": g.region,
             "keywords": keywords
         }
-
-        classification_data = get_classification_data(guideline.id, db)
-        if classification_data:
-            guideline_dict["classification"] = classification_data
-
-        result.append(guideline_dict)
-
-    return result
+        data = _get_classification_data(g.id, db)
+        if data:
+            item["classification"] = data
+        results.append(item)
+    return results
 
 
 @router.post("/", response_model=Guideline)
@@ -172,19 +157,22 @@ async def create_guideline(
     guideline: GuidelineCreate,
     request: Request,
     db: SQLAlchemySession = Depends(get_db),
-    current_user=Depends(get_admin_user)  # 管理者のみがガイドラインを作成可能
+    current_user=Depends(get_admin_user)  # Admins only
 ):
-    """ガイドラインを作成（管理者のみ）"""
-    client_host = request.client.host if request.client else "unknown"
-
-    existing = db.query(GuidelineModel).filter(GuidelineModel.guideline_id == guideline.guideline_id).first()
+    """Create a new guideline (admin only)"""
+    client_ip = request.client.host if request.client else "unknown"
+    existing = (
+        db.query(GuidelineModel)
+          .filter(GuidelineModel.guideline_id == guideline.guideline_id)
+          .first()
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ガイドラインID '{guideline.guideline_id}' は既に存在します"
+            detail=f"Guideline ID '{guideline.guideline_id}' already exists"
         )
 
-    db_guideline = GuidelineModel(
+    db_g = GuidelineModel(
         guideline_id=guideline.guideline_id,
         category=guideline.category,
         standard=guideline.standard,
@@ -192,48 +180,32 @@ async def create_guideline(
         source_url=guideline.source_url,
         region=guideline.region
     )
+    db.add(db_g)
+    db.flush()  # Get generated ID
+    for kw in guideline.keywords:
+        db.add(GuidelineKeyword(guideline_id=db_g.id, keyword=kw))
 
-    db.add(db_guideline)
-    db.flush()  # IDを取得するためにフラッシュする
-
-    for keyword in guideline.keywords:
-        keyword_obj = GuidelineKeyword(
-            guideline_id=db_guideline.id,
-            keyword=keyword
-        )
-        db.add(keyword_obj)
-
-    log_entry = {
-        "action": "guideline_create",
-        "timestamp": datetime.utcnow(),
-        "user_id": current_user.id,
-        "details": f"Guideline {guideline.guideline_id} created",
-        "ip_address": client_host
-    }
-    logger.info(f"AUDIT LOG: {log_entry}")
-
+    logger.info(f"AUDIT LOG: {{'action':'create_guideline','user_id':{current_user.id},'guideline_id':'{guideline.guideline_id}','ip_address':'{client_ip}'}}")
     try:
         db.commit()
-        logger.info(f"ガイドライン '{guideline.guideline_id}' を作成しました")
+        logger.info(f"Guideline '{guideline.guideline_id}' created successfully")
     except Exception as e:
         db.rollback()
-        logger.error(f"ガイドライン作成エラー: {str(e)}")
+        logger.error(f"Error creating guideline: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"ガイドライン作成中にエラーが発生しました: {str(e)}"
+            detail=f"Failed to create guideline: {e}"
         )
 
-    keywords = [kw.keyword for kw in db_guideline.keywords]
-
     return {
-        "id": db_guideline.id,
-        "guideline_id": db_guideline.guideline_id,
-        "category": db_guideline.category,
-        "standard": db_guideline.standard,
-        "control_text": db_guideline.control_text,
-        "source_url": db_guideline.source_url,
-        "region": db_guideline.region,
-        "keywords": keywords
+        "id": db_g.id,
+        "guideline_id": db_g.guideline_id,
+        "category": db_g.category,
+        "standard": db_g.standard,
+        "control_text": db_g.control_text,
+        "source_url": db_g.source_url,
+        "region": db_g.region,
+        "keywords": [kw.keyword for kw in db_g.keywords]
     }
 
 
@@ -243,64 +215,50 @@ async def update_guideline(
     guideline: GuidelineCreate,
     request: Request,
     db: SQLAlchemySession = Depends(get_db),
-    current_user=Depends(get_admin_user)  # 管理者のみがガイドラインを更新可能
+    current_user=Depends(get_admin_user)  # Admins only
 ):
-    """ガイドラインを更新（管理者のみ）"""
-    client_host = request.client.host if request.client else "unknown"
-
-    db_guideline = db.query(GuidelineModel).filter(GuidelineModel.guideline_id == guideline_id).first()
-    if not db_guideline:
+    """Update an existing guideline (admin only)"""
+    client_ip = request.client.host if request.client else "unknown"
+    db_g = (
+        db.query(GuidelineModel)
+          .filter(GuidelineModel.guideline_id == guideline_id)
+          .first()
+    )
+    if not db_g:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ガイドラインID '{guideline_id}' が見つかりません"
+            detail=f"Guideline ID '{guideline_id}' not found"
         )
+    db_g.category = guideline.category
+    db_g.standard = guideline.standard
+    db_g.control_text = guideline.control_text
+    db_g.source_url = guideline.source_url
+    db_g.region = guideline.region
+    db.query(GuidelineKeyword).filter(GuidelineKeyword.guideline_id == db_g.id).delete()
+    for kw in guideline.keywords:
+        db.add(GuidelineKeyword(guideline_id=db_g.id, keyword=kw))
 
-    db_guideline.category = guideline.category
-    db_guideline.standard = guideline.standard
-    db_guideline.control_text = guideline.control_text
-    db_guideline.source_url = guideline.source_url
-    db_guideline.region = guideline.region
-
-    db.query(GuidelineKeyword).filter(GuidelineKeyword.guideline_id == db_guideline.id).delete()
-
-    for keyword in guideline.keywords:
-        keyword_obj = GuidelineKeyword(
-            guideline_id=db_guideline.id,
-            keyword=keyword
-        )
-        db.add(keyword_obj)
-
-    log_entry = {
-        "action": "guideline_update",
-        "timestamp": datetime.utcnow(),
-        "user_id": current_user.id,
-        "details": f"Guideline {guideline_id} updated",
-        "ip_address": client_host
-    }
-    logger.info(f"AUDIT LOG: {log_entry}")
-
+    logger.info(f"AUDIT LOG: {{'action':'update_guideline','user_id':{current_user.id},'guideline_id':'{guideline_id}','ip_address':'{client_ip}'}}")
     try:
         db.commit()
-        logger.info(f"ガイドライン '{guideline_id}' を更新しました")
+        logger.info(f"Guideline '{guideline_id}' updated successfully")
     except Exception as e:
         db.rollback()
-        logger.error(f"ガイドライン更新エラー: {str(e)}")
+        logger.error(f"Error updating guideline: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"ガイドライン更新中にエラーが発生しました: {str(e)}"
+            detail=f"Failed to update guideline: {e}"
         )
 
-    keywords = [kw.keyword for kw in db_guideline.keywords]
-
     return {
-        "id": db_guideline.id,
-        "guideline_id": db_guideline.guideline_id,
-        "category": db_guideline.category,
-        "standard": db_guideline.standard,
-        "control_text": db_guideline.control_text,
-        "source_url": db_guideline.source_url,
-        "region": db_guideline.region,
-        "keywords": keywords
+        "id": db_g.id,
+        "guideline_id": db_g.guideline_id,
+        "category": db_g.category,
+        "standard": db_g.standard,
+        "control_text": db_g.control_text,
+        "source_url": db_g.source_url,
+        "region": db_g.region,
+        "keywords": [kw.keyword for kw in db_g.keywords]
     }
 
 
@@ -309,40 +267,31 @@ async def delete_guideline(
     guideline_id: str,
     request: Request,
     db: SQLAlchemySession = Depends(get_db),
-    current_user=Depends(get_admin_user)  # 管理者のみがガイドラインを削除可能
+    current_user=Depends(get_admin_user)  # Admins only
 ):
-    """ガイドラインを削除（管理者のみ）"""
-    client_host = request.client.host if request.client else "unknown"
-
-    db_guideline = db.query(GuidelineModel).filter(GuidelineModel.guideline_id == guideline_id).first()
-    if not db_guideline:
+    """Delete a guideline (admin only)"""
+    client_ip = request.client.host if request.client else "unknown"
+    db_g = (
+        db.query(GuidelineModel)
+          .filter(GuidelineModel.guideline_id == guideline_id)
+          .first()
+    )
+    if not db_g:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ガイドラインID '{guideline_id}' が見つかりません"
+            detail=f"Guideline ID '{guideline_id}' not found"
         )
-
-    db.query(GuidelineKeyword).filter(GuidelineKeyword.guideline_id == db_guideline.id).delete()
-
-    db.delete(db_guideline)
-
-    log_entry = {
-        "action": "guideline_delete",
-        "timestamp": datetime.utcnow(),
-        "user_id": current_user.id,
-        "details": f"Guideline {guideline_id} deleted",
-        "ip_address": client_host
-    }
-    logger.info(f"AUDIT LOG: {log_entry}")
-
+    db.query(GuidelineKeyword).filter(GuidelineKeyword.guideline_id == db_g.id).delete()
+    db.delete(db_g)
+    logger.info(f"AUDIT LOG: {{'action':'delete_guideline','user_id':{current_user.id},'guideline_id':'{guideline_id}','ip_address':'{client_ip}'}}")
     try:
         db.commit()
-        logger.info(f"ガイドライン '{guideline_id}' を削除しました")
+        logger.info(f"Guideline '{guideline_id}' deleted successfully")
     except Exception as e:
         db.rollback()
-        logger.error(f"ガイドライン削除エラー: {str(e)}")
+        logger.error(f"Error deleting guideline: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"ガイドライン削除中にエラーが発生しました: {str(e)}"
+            detail=f"Failed to delete guideline: {e}"
         )
-
     return None
