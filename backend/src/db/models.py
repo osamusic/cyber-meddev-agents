@@ -25,7 +25,7 @@ class DocumentModel(Base):
     doc_id = Column(String, unique=True, index=True)
     url = Column(String)
     title = Column(String)
-    original_title = Column(String)  # 元のドキュメント全体のタイトル
+    original_title = Column(String)
     content = Column(Text)
     source_type = Column(String)  # PDF, HTML, DOCX
     downloaded_at = Column(DateTime)

@@ -9,8 +9,8 @@ class CrawlTarget(BaseModel):
     mime_filters: List[str] = ["application/pdf", "text/html", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
     depth: int = 2
     name: Optional[str] = None
-    update_existing: bool = True  # 既存のドキュメントを更新するかスキップするか
-    max_document_size: Optional[int] = None  # ドキュメント分割の最大サイズ（文字数）
+    update_existing: bool = True
+    max_document_size: Optional[int] = None
 
 
 class Document(BaseModel):
@@ -18,8 +18,8 @@ class Document(BaseModel):
     doc_id: str
     url: str
     title: str
-    original_title: str  # 元のドキュメント全体のタイトル
+    original_title: str
     content: str
-    source_type: str  # "PDF", "HTML", "DOCX"
+    source_type: str
     downloaded_at: datetime
     lang: str

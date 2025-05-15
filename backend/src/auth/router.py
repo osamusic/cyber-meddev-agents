@@ -19,7 +19,7 @@ from ..db.models import User as UserModel
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["認証"])  # Authentication
+router = APIRouter(tags=["Authentication"])  # Authentication endpoints
 
 
 @router.post("/token", response_model=Token)
@@ -29,17 +29,17 @@ async def login_for_access_token(
     request: Request = None,
     response: Response = None
 ):
-    logger.info(f"ログイン試行: ユーザー名 '{form_data.username}'")
+    logger.info(f"Login attempt: username '{form_data.username}'")
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
-        logger.error(f"認証失敗: ユーザー名 '{form_data.username}' が見つからないか、パスワードが一致しません")
+        logger.error(f"Authentication failed: username '{form_data.username}' not found or password mismatch")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="ユーザー名またはパスワードが正しくありません",  # Incorrect username or password
+            detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    logger.info(f"ユーザー '{form_data.username}' がログインしました")
+    logger.info(f"User '{form_data.username}' logged in successfully")
 
     if request and response:
         regenerate_session_after_login(request, response, user)
@@ -57,24 +57,24 @@ async def register_user(
     admin_code: Optional[str] = None,
     db: SQLAlchemySession = Depends(get_db)
 ):
-    db_user = db.query(UserModel).filter(UserModel.username == user.username).first()
-    if db_user:
+    existing_user = db.query(UserModel).filter(UserModel.username == user.username).first()
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="このユーザー名は既に使用されています"  # Username already in use
+            detail="This username is already in use"
         )
 
     admin_secret = os.getenv("ADMIN_REGISTRATION_SECRET", "admin123")
     is_admin = admin_code is not None and admin_code == admin_secret
 
     user_count = db.query(UserModel).count()
-    is_first_user = user_count == 0
+    is_first_user = (user_count == 0)
 
     hashed_password = get_password_hash(user.password)
     db_user = UserModel(
         username=user.username,
         hashed_password=hashed_password,
-        is_admin=is_admin or is_first_user
+        is_admin=(is_admin or is_first_user)
     )
 
     db.add(db_user)

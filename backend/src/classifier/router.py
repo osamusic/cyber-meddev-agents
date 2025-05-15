@@ -14,10 +14,10 @@ from concurrent.futures import ThreadPoolExecutor
 import asyncio
 from functools import partial
 
+# Use a single thread by default (increase max_workers if needed)
+executor = ThreadPoolExecutor(max_workers=1)
 
-executor = ThreadPoolExecutor(max_workers=1)  # 同時1スレッドで制御（必要なら増やす）
-
-
+# Track classification progress
 classification_progress = {
     "total_documents": 0,
     "processed_documents": 0,
@@ -46,9 +46,8 @@ async def classify_documents(
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """ドキュメントを分類（管理者のみ）"""
+    """Classify documents (admin only)"""
     client_host = request.client.host if request.client else "unknown"
-
     log_entry = {
         "action": "classify_documents",
         "timestamp": datetime.utcnow(),
@@ -59,28 +58,25 @@ async def classify_documents(
     logger.info(f"AUDIT LOG: {log_entry}")
 
     documents = []
-    already_classified_docs = []
+    already_classified = []
 
+    # Determine which documents to classify
     if classification_request.all_documents:
         if classification_request.reclassify:
             documents = db.query(DBDocument).all()
         else:
-            classified_doc_ids = db.query(DBClassificationResult.document_id).distinct().subquery()
-            documents = db.query(DBDocument).filter(
-                ~DBDocument.id.in_(db.query(classified_doc_ids.c.document_id))
-            ).all()
+            subq = db.query(DBClassificationResult.document_id).distinct().subquery()
+            documents = db.query(DBDocument).filter(~DBDocument.id.in_(db.query(subq.c.document_id))).all()
     elif classification_request.document_ids:
         for doc_id in classification_request.document_ids:
             doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
             if not doc:
                 continue
-
-            existing_classification = db.query(DBClassificationResult).filter(
+            existing = db.query(DBClassificationResult).filter(
                 DBClassificationResult.document_id == doc_id
             ).first()
-
-            if existing_classification and not classification_request.reclassify:
-                already_classified_docs.append(doc.title or f"Document {doc_id}")
+            if existing and not classification_request.reclassify:
+                already_classified.append(doc.title or f"Document {doc_id}")
             else:
                 documents.append(doc)
     elif classification_request.section_ids:
@@ -92,6 +88,7 @@ async def classify_documents(
             detail="No documents found for classification"
         )
 
+    # Launch background task
     task_fn = partial(
         classify_documents_background,
         [doc.id for doc in documents],
@@ -100,6 +97,7 @@ async def classify_documents(
     )
     asyncio.get_event_loop().run_in_executor(executor, task_fn)
 
+    # Initialize progress tracking
     global classification_progress
     classification_progress = {
         "total_documents": len(documents),
@@ -110,14 +108,16 @@ async def classify_documents(
     }
 
     message = None
-    if already_classified_docs:
-        message = f"次のドキュメントは既に分類されているためスキップされました: {', '.join(already_classified_docs)}"
+    if already_classified:
+        message = (
+            "The following documents were skipped because they have already been classified: " + ", ".join(already_classified)
+        )
 
     return ClassificationResult(
         processed_count=len(documents),
         categories_count={},
         frameworks=["NIST_CSF", "IEC_62443"],
-        skipped_documents=already_classified_docs,
+        skipped_documents=already_classified,
         message=message,
         total_count=len(documents),
         current_count=0,
@@ -131,7 +131,7 @@ async def get_classification_results(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """ドキュメントの分類結果を取得"""
+    """Retrieve classification result for a single document"""
     document = db.query(DBDocument).filter(DBDocument.id == document_id).first()
     if not document:
         raise HTTPException(
@@ -161,7 +161,7 @@ async def get_classification_results(
             "result": result
         }
     except Exception as e:
-        logger.error(f"Error parsing classification result: {str(e)}")
+        logger.error(f"Error parsing classification result: {e}")
         return {
             "document_id": document_id,
             "title": document.title,
@@ -175,45 +175,37 @@ async def get_classification_stats(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """分類統計情報を取得"""
+    """Retrieve classification statistics"""
     total_documents = db.query(DBDocument).count()
     classified_documents = db.query(DBDocument).join(
         DBClassificationResult, DBDocument.id == DBClassificationResult.document_id
     ).distinct().count()
 
-    nist_stats = {
-        "ID": 0, "PR": 0, "DE": 0, "RS": 0, "RC": 0
-    }
+    nist_stats = {"ID": 0, "PR": 0, "DE": 0, "RS": 0, "RC": 0}
+    iec_stats = {"FR1": 0, "FR2": 0, "FR3": 0, "FR4": 0, "FR5": 0, "FR6": 0, "FR7": 0}
 
-    iec_stats = {
-        "FR1": 0, "FR2": 0, "FR3": 0, "FR4": 0, "FR5": 0, "FR6": 0, "FR7": 0
-    }
-
-    latest_classifications = db.query(DBClassificationResult).order_by(
+    latest = db.query(DBClassificationResult).order_by(
         DBClassificationResult.document_id, DBClassificationResult.created_at.desc()
     ).all()
 
-    document_ids = set()
-    for classification in latest_classifications:
-        if classification.document_id in document_ids:
+    seen = set()
+    for cls in latest:
+        if cls.document_id in seen:
             continue
-
-        document_ids.add(classification.document_id)
-
+        seen.add(cls.document_id)
         try:
-            result = json.loads(classification.result_json)
+            res = json.loads(cls.result_json)
+            nist = res.get("frameworks", {}).get("NIST_CSF", {})
+            primary_nist = nist.get("primary_category")
+            if primary_nist in nist_stats:
+                nist_stats[primary_nist] += 1
 
-            if "frameworks" in result and "NIST_CSF" in result["frameworks"]:
-                nist_result = result["frameworks"]["NIST_CSF"]
-                if "primary_category" in nist_result and nist_result["primary_category"] in nist_stats:
-                    nist_stats[nist_result["primary_category"]] += 1
-
-            if "frameworks" in result and "IEC_62443" in result["frameworks"]:
-                iec_result = result["frameworks"]["IEC_62443"]
-                if "primary_requirement" in iec_result and iec_result["primary_requirement"] in iec_stats:
-                    iec_stats[iec_result["primary_requirement"]] += 1
+            iec = res.get("frameworks", {}).get("IEC_62443", {})
+            primary_iec = iec.get("primary_requirement")
+            if primary_iec in iec_stats:
+                iec_stats[primary_iec] += 1
         except Exception as e:
-            logger.error(f"Error parsing classification result: {str(e)}")
+            logger.error(f"Error parsing classification result: {e}")
 
     return {
         "total_documents": total_documents,
@@ -229,10 +221,10 @@ async def get_all_classifications(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """すべての分類結果を取得"""
-    logger.info("すべての分類結果を取得中")
+    """Retrieve all latest classification results"""
+    logger.info("Retrieving all classification results")
 
-    subquery = db.query(
+    subq = db.query(
         DBClassificationResult.document_id,
         DBClassificationResult.id.label("latest_id")
     ).distinct(
@@ -243,50 +235,46 @@ async def get_all_classifications(
     ).subquery()
 
     classifications = db.query(DBClassificationResult).join(
-        subquery,
-        DBClassificationResult.id == subquery.c.latest_id
+        subq, DBClassificationResult.id == subq.c.latest_id
     ).all()
 
     results = []
-    for classification in classifications:
+    for cls in classifications:
         try:
-            document = db.query(DBDocument).filter(DBDocument.id == classification.document_id).first()
-            if not document:
+            doc = db.query(DBDocument).filter(DBDocument.id == cls.document_id).first()
+            if not doc:
                 continue
 
-            result_json = json.loads(classification.result_json)
-
-            classification_data = {
-                "id": classification.id,
-                "document_id": classification.document_id,
-                "document_title": document.title if document else "不明なドキュメント",
-                "source_url": document.source_url if document and hasattr(document, 'source_url') else "",
-                "created_at": classification.created_at.isoformat(),
-                "requirements": result_json.get("requirements", ""),
-                "keywords": result_json.get("keywords", []),
+            data = json.loads(cls.result_json)
+            entry = {
+                "id": cls.id,
+                "document_id": cls.document_id,
+                "document_title": doc.title or "Unknown Document",
+                "source_url": getattr(doc, "source_url", ""),
+                "created_at": cls.created_at.isoformat(),
+                "requirements": data.get("requirements", []),
+                "keywords": data.get("keywords", []),
             }
 
-            if "frameworks" in result_json and "NIST_CSF" in result_json["frameworks"]:
-                nist_data = result_json["frameworks"]["NIST_CSF"]
-                classification_data["nist"] = {
-                    "primary_category": nist_data.get("primary_category", ""),
-                    "categories": nist_data.get("categories", {}),
-                    "explanation": nist_data.get("explanation", "")
+            if "frameworks" in data:
+                nist = data["frameworks"].get("NIST_CSF", {})
+                entry["nist"] = {
+                    "primary_category": nist.get("primary_category", ""),
+                    "categories": nist.get("categories", {}),
+                    "explanation": nist.get("explanation", "")
+                }
+                iec = data["frameworks"].get("IEC_62443", {})
+                entry["iec"] = {
+                    "primary_requirement": iec.get("primary_requirement", ""),
+                    "requirements": iec.get("requirements", {}),
+                    "explanation": iec.get("explanation", "")
                 }
 
-            if "frameworks" in result_json and "IEC_62443" in result_json["frameworks"]:
-                iec_data = result_json["frameworks"]["IEC_62443"]
-                classification_data["iec"] = {
-                    "primary_requirement": iec_data.get("primary_requirement", ""),
-                    "requirements": iec_data.get("requirements", {}),
-                    "explanation": iec_data.get("explanation", "")
-                }
-
-            results.append(classification_data)
+            results.append(entry)
         except Exception as e:
-            logger.error(f"分類結果の解析エラー: {str(e)}")
+            logger.error(f"Error processing classification result: {e}")
 
-    logger.info(f"取得した分類結果: {len(results)}件")
+    logger.info(f"Number of classification results retrieved: {len(results)}")
     return results
 
 
@@ -295,7 +283,7 @@ def classify_documents_background(
     config: ClassificationConfig,
     user_id: int
 ):
-    """バックグラウンドでドキュメントを分類"""
+    """Classify documents in the background"""
     logger.info(f"Starting background classification for {len(documents)} documents")
 
     db = SessionLocal()
@@ -311,21 +299,19 @@ def classify_documents_background(
 
                 classification_result = classifier.classify_document(document.content, config)
 
-                db_classification = DBClassificationResult(
+                db_entry = DBClassificationResult(
                     document_id=doc_id,
                     user_id=user_id,
                     result_json=json.dumps(classification_result),
                     created_at=datetime.now()
                 )
-
-                db.add(db_classification)
+                db.add(db_entry)
                 db.commit()
 
                 classification_progress["processed_documents"] = idx + 1
-
                 logger.info(f"Classification completed for document {doc_id} ({idx + 1}/{len(documents)})")
             except Exception as e:
-                logger.error(f"Error classifying document {doc_id}: {str(e)}")
+                logger.error(f"Error classifying document {doc_id}: {e}")
                 db.rollback()
 
         classification_progress["status"] = "completed"
@@ -339,6 +325,7 @@ def classify_documents_background(
 async def get_classification_progress(
     current_user: User = Depends(get_current_active_user),
 ):
+    """Get current classification progress"""
     return ClassificationResult(
         processed_count=classification_progress["total_documents"],
         categories_count={},
