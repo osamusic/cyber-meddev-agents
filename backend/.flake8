@@ -2,3 +2,4 @@
 max-line-length = 88
 exclude = .git,__pycache__,build,dist,.venv,scripts,tests
 ignore = E203,E501,W503,W504,W605
+complexity = 10
