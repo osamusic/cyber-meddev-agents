@@ -18,7 +18,7 @@ router = APIRouter(
 @router.get("/documents", response_model=List[DocumentInfo])
 async def get_all_documents(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: SQLAlchemySession = Depends(get_db)
 ):
     """Get all documents (admin only)"""

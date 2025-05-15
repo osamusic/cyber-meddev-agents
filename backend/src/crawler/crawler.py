@@ -1,6 +1,8 @@
 import requests
 import hashlib
 import os
+import urllib.parse
+import re
 from datetime import datetime
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
@@ -252,6 +254,29 @@ class Crawler:
         logger.info(f"Document from {url} split into {len(docs)} parts with average part size: {sum(len(d.content) for d in docs) // max(1, len(docs))} characters")
         return docs
 
+    def _clean_title(self, title: str, max_length: int = 100) -> str:
+        # URLエンコードのデコード
+        title = urllib.parse.unquote(title)
+
+        # ファイル拡張子を分離
+        match = re.match(r"(.+?)(\.[^.]+)?$", title)
+        if not match:
+            return title[:max_length]  # フォールバック
+        base, ext = match.groups()
+        ext = ext or ""
+
+        # 不要な記号を削除（英数・日本語・スペース・アンダースコア・ハイフン以外を除外）
+        base = re.sub(r"[^\w\s\-ぁ-んァ-ン一-龯]", "", base)
+
+        # アンダースコアや連続スペースをスペースに
+        base = re.sub(r"[_\s]+", " ", base).strip()
+
+        # 最大長で切り詰め（拡張子分を考慮）
+        if len(base) > max_length:
+            base = base[:max_length].rstrip()
+
+        return f"{base}"
+
     def _process_document(self, url: str, response, content_type: str, target: CrawlTarget) -> List[Document]:
         """Process a document based on its content type and split if necessary"""
         try:
@@ -321,7 +346,9 @@ class Crawler:
                 original_title = title  # PDF以外の場合もオリジナルタイトルを設定
 
             title_str = str(title) if title is not None else url
+            title_str = self._clean_title(title_str)
             original_title_str = str(original_title) if original_title is not None else url
+            original_title_str = self._clean_title(original_title_str)
 
             return self._split_document(
                 content=content,

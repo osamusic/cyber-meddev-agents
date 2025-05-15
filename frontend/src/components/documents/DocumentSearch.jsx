@@ -24,11 +24,13 @@ const DocumentSearch = () => {
   const [topK, setTopK] = useState(5);
   const [filters, setFilters] = useState({});
   const [showFilters, setShowFilters] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
+    setHasSearched(true);
     setIsSearching(true);
     setLoading(true);
     setError(null);
@@ -55,6 +57,7 @@ const DocumentSearch = () => {
     setFilters({});
     setSearchQuery('');
     setSearchResults([]);
+    setHasSearched(false);
   };
 
   const handleFilterChange = (key, value) => {
@@ -166,7 +169,7 @@ const DocumentSearch = () => {
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
-      ) : searchResults.length === 0 && searchQuery.trim() && !isSearching ? (
+      ) : hasSearched && searchResults.length === 0 ? (
         <div className="bg-white p-6 rounded-lg shadow-md mb-6 text-center">
           <h3 className="text-lg font-semibold mb-4">検索結果が見つかりませんでした</h3>
           <p className="text-gray-600">検索条件を変更して再度お試しください。</p>
