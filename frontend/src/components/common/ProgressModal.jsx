@@ -19,7 +19,7 @@ const ProgressModal = () => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-lg w-full">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">処理状況</h3>
+          <h3 className="text-lg font-semibold">Processing Status</h3>
           <button 
             onClick={closeProgressModal}
             className="text-gray-500 hover:text-gray-700"
@@ -38,7 +38,7 @@ const ProgressModal = () => {
           <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4 flex items-center">
             <FaSpinner className="animate-spin mr-2 text-xl" />
             <div>
-              <p className="font-medium">分類処理実行中...</p>
+              <p className="font-medium">Classification in progress...</p>
             </div>
           </div>
         )}
@@ -52,10 +52,10 @@ const ProgressModal = () => {
               ></div>
             </div>
             <p className="text-sm text-gray-600">
-              {classificationProgress.status === 'initializing' && '初期化中...'}
-              {classificationProgress.status === 'in_progress' && `処理中... ${classificationProgress.current_count}/${classificationProgress.total_count} ドキュメント完了`}
-              {classificationProgress.status === 'completed' && 'すべてのドキュメントの分類が完了しました'}
-              {classificationProgress.status === 'error' && '分類処理中にエラーが発生しました'}
+              {classificationProgress.status === 'initializing' && 'Initializing...'}
+              {classificationProgress.status === 'in_progress' && `Processing... ${classificationProgress.current_count}/${classificationProgress.total_count} documents completed`}
+              {classificationProgress.status === 'completed' && 'All documents have been classified'}
+              {classificationProgress.status === 'error' && 'An error occurred during classification'}
             </p>
           </div>
         )}

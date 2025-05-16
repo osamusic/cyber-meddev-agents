@@ -22,7 +22,7 @@ const AdminDocuments = () => {
       setDocuments(response.data);
     } catch (err) {
       console.error('Error fetching documents:', err);
-      setError('ドキュメント情報の取得中にエラーが発生しました');
+      setError('An error occurred while fetching document information');
     } finally {
       setLoading(false);
     }
@@ -44,7 +44,7 @@ const AdminDocuments = () => {
       setDeleteConfirmation(null);
     } catch (err) {
       console.error('Error deleting document:', err);
-      setError('ドキュメントの削除中にエラーが発生しました');
+      setError('An error occurred while deleting the document');
     } finally {
       setActionInProgress(false);
     }
@@ -72,7 +72,7 @@ const AdminDocuments = () => {
       setGroupDeleteConfirmation(null);
     } catch (err) {
       console.error('Error deleting group:', err);
-      setError('ドキュメントのグループ削除中にエラーが発生しました');
+      setError('An error occurred while deleting the document group');
     } finally {
       setActionInProgress(false);
     }
@@ -114,7 +114,7 @@ const AdminDocuments = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">ドキュメント管理</h1>
+      <h1 className="text-2xl font-bold mb-6">Document Management</h1>
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
@@ -123,7 +123,7 @@ const AdminDocuments = () => {
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         {Object.keys(documentGroups).length === 0 ? (
           <div className="px-6 py-4 text-center text-gray-500">
-            ドキュメントが見つかりません
+            No documents found
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
@@ -138,13 +138,13 @@ const AdminDocuments = () => {
                       {expandedGroups[groupTitle] ? <FaChevronDown /> : <FaChevronRight />}
                     </div>
                     <h3 className="text-lg font-medium text-gray-900">{groupTitle}</h3>
-                    <span className="ml-2 text-sm text-gray-500">({docs.length}件)</span>
+                    <span className="ml-2 text-sm text-gray-500">({docs.length} items)</span>
                   </div>
                   <div className="flex items-center">
                     {docs.length > 0 && (
                       <>
                         <span className="text-sm text-gray-500 mr-4">
-                          ソース:
+                          Source:
                           <a
                             href={docs[0].url}
                             target="_blank"
@@ -156,7 +156,7 @@ const AdminDocuments = () => {
                           </a>
                         </span>
                         <span className="text-sm text-gray-500 mr-4">
-                          ダウンロード日時: {formatDate(docs[0].downloaded_at)}
+                          Downloaded At: {formatDate(docs[0].downloaded_at)}
                         </span>
                       </>
                     )}
@@ -169,14 +169,14 @@ const AdminDocuments = () => {
                             actionInProgress ? 'opacity-50 cursor-not-allowed' : ''
                           }`}
                         >
-                          確認
+                          Confirm
                         </button>
                         <button
                           onClick={cancelDeleteGroup}
                           disabled={actionInProgress}
                           className="text-gray-600 hover:text-gray-900"
                         >
-                          キャンセル
+                          Cancel
                         </button>
                       </div>
                     ) : (
@@ -184,7 +184,7 @@ const AdminDocuments = () => {
                         onClick={e => { e.stopPropagation(); confirmDeleteGroup(groupTitle); }}
                         className="text-red-600 hover:text-red-900 mr-4"
                       >
-                        削除
+                        Delete
                       </button>
                     )}
                   </div>
@@ -198,10 +198,10 @@ const AdminDocuments = () => {
                             ID
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            タイトル
+                            Title
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            アクション
+                            Action
                           </th>
                         </tr>
                       </thead>
@@ -224,14 +224,14 @@ const AdminDocuments = () => {
                                       actionInProgress ? 'opacity-50 cursor-not-allowed' : ''
                                     }`}
                                   >
-                                    確認
+                                    Confirm
                                   </button>
                                   <button
                                     onClick={cancelDelete}
                                     disabled={actionInProgress}
                                     className="text-gray-600 hover:text-gray-900"
                                   >
-                                    キャンセル
+                                    Cancel
                                   </button>
                                 </div>
                               ) : (
@@ -239,7 +239,7 @@ const AdminDocuments = () => {
                                   onClick={() => confirmDelete(doc.doc_id)}
                                   className="text-red-600 hover:text-red-900"
                                 >
-                                  削除
+                                  Delete
                                 </button>
                               )}
                             </td>

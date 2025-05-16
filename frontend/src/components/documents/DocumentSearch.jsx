@@ -45,7 +45,7 @@ const DocumentSearch = () => {
       setSearchResults(response.data);
     } catch (err) {
       console.error(err);
-      setError('検索中にエラーが発生しました。');
+      setError('An error occurred during search.');
       setSearchResults([]);
     } finally {
       setLoading(false);
@@ -67,14 +67,14 @@ const DocumentSearch = () => {
   const renderSearchResult = (result, index) => (
     <div key={index} className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow">
       <div className="flex justify-between items-start">
-        <h3 className="text-lg font-semibold mb-2">{result.metadata?.title || 'タイトルなし'}</h3>
+        <h3 className="text-lg font-semibold mb-2">{result.metadata?.title || 'No Title'}</h3>
         <div>
           {result.metadata?.source_type && (
             <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mr-2">
               {result.metadata.source_type}
             </span>
           )}
-          <span className="text-sm text-gray-500">スコア: {Math.round(result.score * 100) / 100}</span>
+          <span className="text-sm text-gray-500">Score: {Math.round(result.score * 100) / 100}</span>
         </div>
       </div>
       <div className="mt-2 text-gray-700 whitespace-pre-wrap">
@@ -83,7 +83,7 @@ const DocumentSearch = () => {
       {result.metadata?.url && (
         <div className="mt-3 pt-3 border-t border-gray-200">
           <a href={result.metadata.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
-            原文を表示
+            View Original
           </a>
         </div>
       )}
@@ -92,7 +92,7 @@ const DocumentSearch = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">ドキュメント検索</h1>
+      <h1 className="text-2xl font-bold mb-6">Document Search</h1>
 
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>
@@ -100,9 +100,9 @@ const DocumentSearch = () => {
 
       <div className="bg-white p-4 rounded-lg shadow-md mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">検索設定</h2>
+          <h2 className="text-lg font-semibold">Search Settings</h2>
           <button onClick={() => setShowFilters(!showFilters)} className="text-blue-600 hover:text-blue-800">
-            {showFilters ? '設定を隠す' : '設定を表示'}
+            {showFilters ? 'Hide Settings' : 'Show Settings'}
           </button>
         </div>
 
@@ -111,7 +111,7 @@ const DocumentSearch = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ドキュメントを検索..."
+            placeholder="Search documents..."
             className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
@@ -119,43 +119,42 @@ const DocumentSearch = () => {
             disabled={isSearching || !searchQuery.trim()}
             className={`px-4 py-2 rounded-lg text-white font-medium flex items-center ${
               isSearching || !searchQuery.trim() ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
+            }`}>
             <FaSearch className="mr-2" />
-            {isSearching ? '検索中...' : '検索'}
+            {isSearching ? 'Searching...' : 'Search'}
           </button>
           <button
             type="button"
             onClick={resetFilters}
             className="px-4 py-2 rounded-lg text-blue-600 border border-blue-600 hover:bg-blue-50"
           >
-            リセット
+            Reset
           </button>
         </form>
 
         {showFilters && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
-              <label className="block text-gray-700 font-medium mb-2">件数制限</label>
+              <label className="block text-gray-700 font-medium mb-2">Result Limit</label>
               <select
                 value={topK}
                 onChange={(e) => setTopK(Number(e.target.value))}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {TOP_K_OPTIONS.map((k) => (
-                  <option key={k} value={k}>{k}件</option>
+                  <option key={k} value={k}>{k} items</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-gray-700 font-medium mb-2">ソースタイプ</label>
+              <label className="block text-gray-700 font-medium mb-2">Source Type</label>
               <select
                 value={filters.sourceType || ''}
                 onChange={(e) => handleFilterChange('sourceType', e.target.value)}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">すべて</option>
+                <option value="">All</option>
                 {SOURCE_TYPES.map((type) => (
                   <option key={type} value={type}>{type}</option>
                 ))}
@@ -171,8 +170,8 @@ const DocumentSearch = () => {
         </div>
       ) : hasSearched && searchResults.length === 0 ? (
         <div className="bg-white p-6 rounded-lg shadow-md mb-6 text-center">
-          <h3 className="text-lg font-semibold mb-4">検索結果が見つかりませんでした</h3>
-          <p className="text-gray-600">検索条件を変更して再度お試しください。</p>
+          <h3 className="text-lg font-semibold mb-4">No results found</h3>
+          <p className="text-gray-600">Please adjust your search filters and try again.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">

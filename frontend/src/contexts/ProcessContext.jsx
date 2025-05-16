@@ -12,7 +12,7 @@ export const ProcessProvider = ({ children }) => {
 
   const pollIntervalRef = useRef(null);
 
-  // クリーンアップ
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
@@ -21,9 +21,7 @@ export const ProcessProvider = ({ children }) => {
     };
   }, []);
 
-
-
-  const startClassificationProgressPolling = () => {
+  const startProgressPolling = () => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
     }
@@ -38,9 +36,9 @@ export const ProcessProvider = ({ children }) => {
           setClassificationLoading(false);
         }
       } catch (err) {
-        console.error('進捗取得エラー:', err);
+        console.error('Error retrieving progress:', err);
         stopProgressPolling();
-        setClassificationError('進捗取得に失敗しました');
+        setClassificationError('Failed to retrieve progress');
         setClassificationLoading(false);
       }
     }, 5000);
@@ -61,12 +59,12 @@ export const ProcessProvider = ({ children }) => {
 
       await axiosClient.post('/classifier/classify', requestData);
 
-      startClassificationProgressPolling();
+      startProgressPolling();
       return true;
     } catch (err) {
-      console.error('分類エラー:', err);
+      console.error('Classification error:', err);
       setClassificationError(
-        err.response?.data?.detail || '分類処理中にエラーが発生しました'
+        err.response?.data?.detail || 'An error occurred during classification process'
       );
       stopProgressPolling();
       setClassificationLoading(false);

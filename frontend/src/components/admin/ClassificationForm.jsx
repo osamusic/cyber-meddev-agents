@@ -15,10 +15,10 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [classifyAll, setClassifyAll] = useState(false);
-  const [reclassifyMode, setReclassifyMode] = useState(false);  // 再分類モード用の状態
+  const [reclassifyMode, setReclassifyMode] = useState(false);  // State for reclassification mode
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [expandedGroups, setExpandedGroups] = useState({});  // グループの展開状態を管理
+  const [expandedGroups, setExpandedGroups] = useState({});  // Manage group expand state
   
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -38,7 +38,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     setSuccessMessage(null);
     setSelectedDocuments([]);
     setClassifyAll(false);
-    setReclassifyMode(false);  // 再分類モードもリセット
+    setReclassifyMode(false);
   };
 
   const toggleGroup = (groupTitle) => {
@@ -73,17 +73,16 @@ const ClassificationForm = ({ onClassifyComplete }) => {
     return groups;
   };
 
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     resetForm();
-    setSuccessMessage("分類処理を開始しました。進捗状況を確認しています...");
+    setSuccessMessage('Classification process has started. Monitoring progress...');
     
     const requestData = {
       all_documents: classifyAll,
       document_ids: classifyAll ? [] : selectedDocuments,
-      reclassify: reclassifyMode,  // 再分類モードのパラメータを追加
+      reclassify: reclassifyMode,
     };
     
     await startClassification(requestData);
@@ -111,7 +110,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
   
   return (
     <div className="bg-white p-6 rounded-lg shadow-md mt-4">
-      <h2 className="text-lg font-semibold mb-4">ドキュメント分類</h2>
+      <h2 className="text-lg font-semibold mb-4">Document Classification</h2>
       
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -121,7 +120,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
       
       {success && (
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-          分類処理が開始されました。結果は数分後に反映されます。
+          Classification process has started. Results will be available shortly.
           {successMessage && <p className="mt-2">{successMessage}</p>}
         </div>
       )}
@@ -130,7 +129,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
         <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4 flex items-center">
           <FaSpinner className="animate-spin mr-2 text-xl" />
           <div>
-            <p className="font-medium">分類処理実行中...</p>
+            <p className="font-medium">Classification in progress...</p>
           </div>
         </div>
       )}
@@ -145,10 +144,10 @@ const ClassificationForm = ({ onClassifyComplete }) => {
             ></div>
           </div>
           <p className="text-sm text-gray-600">
-            {progress.status === 'initializing' && '初期化中...'}
-            {progress.status === 'in_progress' && `処理中... ${progress.current_count}/${progress.total_count} ドキュメント完了`}
-            {progress.status === 'completed' && 'すべてのドキュメントの分類が完了しました'}
-            {progress.status === 'error' && '分類処理中にエラーが発生しました'}
+            {progress.status === 'initializing' && 'Initializing...'}
+            {progress.status === 'in_progress' && `Processing... ${progress.current_count}/${progress.total_count} documents completed`}
+            {progress.status === 'completed' && 'All documents have been classified'}
+            {progress.status === 'error' && 'An error occurred during classification process'}
           </p>
         </div>
       )}
@@ -162,7 +161,7 @@ const ClassificationForm = ({ onClassifyComplete }) => {
               onChange={(e) => setClassifyAll(e.target.checked)}
               className="mr-2"
             />
-            <span className="font-medium">すべてのドキュメントを分類</span>
+            <span className="font-medium">Classify all documents</span>
           </label>
           
           <label className="flex items-center mb-2 mt-2">
@@ -172,16 +171,16 @@ const ClassificationForm = ({ onClassifyComplete }) => {
               onChange={(e) => setReclassifyMode(e.target.checked)}
               className="mr-2"
             />
-            <span className="font-medium">再分類モード（分類済みドキュメントを再分類）</span>
+            <span className="font-medium">Reclassification mode (reclassify already classified documents)</span>
           </label>
         </div>
         
         {!classifyAll && (
           <div className="mb-4">
-            <h3 className="font-medium mb-2">分類するドキュメントを選択:</h3>
+            <h3 className="font-medium mb-2">Select documents to classify:</h3>
             <div className="max-h-60 overflow-y-auto border rounded p-2">
               {documents.length === 0 ? (
-                <p className="text-gray-500">ドキュメントがありません</p>
+                <p className="text-gray-500">No documents available</p>
               ) : (
                 (() => {
                   const documentGroups = groupDocumentsByOriginalTitle();
@@ -209,10 +208,8 @@ const ClassificationForm = ({ onClassifyComplete }) => {
                               className="mr-2"
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className={`font-medium ${allClassified && !reclassifyMode ? 'text-gray-500' : ''}`}>
-                              {groupTitle} ({docs.length}件)
-                            </span>
-                            {allClassified && <span className="ml-2 text-sm text-gray-500">（全て分類済み）</span>}
+                            <span className={`font-medium ${allClassified && !reclassifyMode ? 'text-gray-500' : ''}`}>{groupTitle} ({docs.length})</span>
+                            {allClassified && <span className="ml-2 text-sm text-gray-500">(All classified)</span>}
                           </label>
                         </div>
                         
@@ -224,13 +221,12 @@ const ClassificationForm = ({ onClassifyComplete }) => {
                                   type="checkbox"
                                   onChange={(e) => handleDocumentSelect(e, doc.id)}
                                   checked={selectedDocuments.includes(doc.id)}
-                                  disabled={doc.is_classified && !reclassifyMode}  // 再分類モードの時は選択可能
+                                  disabled={doc.is_classified && !reclassifyMode}
                                   className="mr-2"
                                 />
                                 <span>{doc.title || doc.url}</span>
-                                {doc.is_classified && <span className="ml-2 text-sm text-gray-500">（分類済み）</span>}
-                                {doc.is_classified && reclassifyMode && selectedDocuments.includes(doc.id) && 
-                                  <span className="ml-2 text-sm text-blue-500">（再分類予定）</span>}
+                                {doc.is_classified && <span className="ml-2 text-sm text-gray-500">(Classified)</span>}
+                                {doc.is_classified && reclassifyMode && selectedDocuments.includes(doc.id) && <span className="ml-2 text-sm text-blue-500">(Reclassification pending)</span>}
                               </label>
                             ))}
                           </div>
@@ -256,10 +252,10 @@ const ClassificationForm = ({ onClassifyComplete }) => {
           {loading ? (
             <>
               <FaSpinner className="animate-spin mr-2" />
-              {progress ? `処理中... ${progress.current_count}/${progress.total_count}` : '処理中...'}
+              {progress ? `Processing... ${progress.current_count}/${progress.total_count}` : 'Processing...'}
             </>
           ) : (
-            '分類を開始'
+            'Start Classification'
           )}
         </button>
       </form>
