@@ -9,24 +9,26 @@ const axiosClient = axios.create({
   },
 });
 
+// Add a request interceptor to include the auth token if available
 axiosClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('認証トークンを設定:', token.substring(0, 10) + '...');
-      console.log('リクエスト先:', config.url);
+      console.log('Auth token set:', token.substring(0, 10) + '...');
+      console.log('Request URL:', config.url);
     } else {
-      console.log('認証トークンなし - 未認証リクエスト:', config.url);
+      console.log('No auth token - sending unauthenticated request to:', config.url);
     }
     return config;
   },
   (error) => {
-    console.error('リクエストインターセプターエラー:', error);
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
+// Add a response interceptor to handle unauthorized errors
 axiosClient.interceptors.response.use(
   (response) => {
     return response;

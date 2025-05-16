@@ -35,41 +35,45 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('ログイン試行:', username);
-      
+
+      console.log('Attempting login:', username);
+
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
-      
-      const response = await axiosClient.post('/token', formData.toString(), {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+
+      const response = await axiosClient.post(
+        '/token',
+        formData.toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
         }
-      });
-      
-      if (response.data && response.data.access_token) {
-        console.log('ログイン成功: トークンを保存します');
+      );
+
+      if (response.data?.access_token) {
+        console.log('Login successful: saving token');
         localStorage.setItem('token', response.data.access_token);
-        
+
         try {
           const userResponse = await axiosClient.get('/me');
           setUser(userResponse.data);
-          console.log('ユーザー情報を取得しました:', userResponse.data);
+          console.log('Fetched user info:', userResponse.data);
         } catch (userErr) {
-          console.error('ユーザー情報取得エラー:', userErr);
+          console.error('Error fetching user info:', userErr);
           setUser({ username });
         }
-        
+
         return true;
       } else {
-        console.error('トークンが返却されませんでした');
-        setError('認証サーバーからトークンが返却されませんでした');
+        console.error('No token returned');
+        setError('No token returned from authentication server');
         return false;
       }
     } catch (err) {
-      console.error('ログインエラー:', err);
-      setError(err.response?.data?.detail || 'ログイン中にエラーが発生しました');
+      console.error('Login error:', err);
+      setError(err.response?.data?.detail || 'An error occurred during login');
       return false;
     } finally {
       setLoading(false);
@@ -79,21 +83,16 @@ export const AuthProvider = ({ children }) => {
   const register = async (username, password, adminCode = null) => {
     setError(null);
     try {
-      const registerData = {
-        username,
-        password,
-      };
-      
+      const registerData = { username, password };
       if (adminCode) {
         registerData.admin_code = adminCode;
       }
-      
+
       await axiosClient.post('/register', registerData);
-      
       return await login(username, password);
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.detail || '登録に失敗しました');
+      setError(err.response?.data?.detail || 'Registration failed');
       return false;
     }
   };

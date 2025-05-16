@@ -27,14 +27,14 @@ const AdminDashboard = () => {
       setUpdatingIndex(true);
       setIndexUpdateMessage({
         type: 'info',
-        text: 'インデックスを更新中...'
+        text: 'Updating index...'
       });
       
       const response = await axiosClient.post('/index/documents');
       
       setIndexUpdateMessage({
         type: 'success',
-        text: response.data.message || 'インデックスが正常に更新されました'
+        text: response.data.message || 'Index updated successfully'
       });
       
       await fetchStats();
@@ -43,7 +43,7 @@ const AdminDashboard = () => {
       console.error('Error updating index:', err);
       setIndexUpdateMessage({
         type: 'error',
-        text: err.response?.data?.detail || 'インデックスの更新中にエラーが発生しました'
+        text: err.response?.data?.detail || 'An error occurred while updating the index'
       });
     } finally {
       setUpdatingIndex(false);
@@ -72,7 +72,7 @@ const AdminDashboard = () => {
       });
     } catch (err) {
       console.error('Error fetching stats:', err);
-      setError('統計情報の取得中にエラーが発生しました');
+      setError('An error occurred while fetching stats');
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ const AdminDashboard = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">管理者ダッシュボード</h1>
+      <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
       
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -103,68 +103,68 @@ const AdminDashboard = () => {
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-2">ユーザー</h2>
+          <h2 className="text-lg font-semibold mb-2">Users</h2>
           <p className="text-3xl font-bold text-blue-600">{stats.totalUsers}</p>
           <Link 
             to="/admin/users" 
             className="text-blue-600 hover:underline mt-4 inline-block"
           >
-            ユーザー管理 →
+            Manage Users →
           </Link>
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-2">ガイドライン</h2>
+          <h2 className="text-lg font-semibold mb-2">Guidelines</h2>
           <p className="text-3xl font-bold text-blue-600">{stats.totalGuidelines}</p>
           <Link 
             to="/guidelines" 
             className="text-blue-600 hover:underline mt-4 inline-block"
           >
-            ガイドライン一覧 →
+            View Guidelines →
           </Link>
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-2">ドキュメント</h2>
+          <h2 className="text-lg font-semibold mb-2">Documents</h2>
           <p className="text-3xl font-bold text-blue-600">{stats.totalDocuments}</p>
           <Link 
             to="/admin/documents" 
             className="text-blue-600 hover:underline mt-4 inline-block"
           >
-            ドキュメント管理 →
+            Manage Documents →
           </Link>
         </div>
       </div>
       
       {/* Index stats */}
       <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-lg font-semibold mb-4">インデックス情報</h2>
+        <h2 className="text-lg font-semibold mb-4">Index Information</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <h3 className="font-medium text-gray-500">総ドキュメント数</h3>
+            <h3 className="font-medium text-gray-500">Total Documents</h3>
             <p className="text-xl font-semibold">{stats.indexStats.total_documents}</p>
           </div>
           
           <div>
-            <h3 className="font-medium text-gray-500">総チャンク数</h3>
+            <h3 className="font-medium text-gray-500">Total Chunks</h3>
             <p className="text-xl font-semibold">{stats.indexStats.total_chunks}</p>
           </div>
           
           <div>
-            <h3 className="font-medium text-gray-500">最終更新日時</h3>
+            <h3 className="font-medium text-gray-500">Last Updated</h3>
             <p className="text-xl font-semibold">
               {stats.indexStats.last_updated 
                 ? new Date(stats.indexStats.last_updated).toLocaleString('ja-JP')
-                : '更新なし'}
+                : 'No updates'}
             </p>
           </div>
         </div>
       </div>
       
-      {/* Quick actions */}
+      {/* Quick Actions */}
       <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-lg font-semibold mb-4">クイックアクション</h2>
+        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
@@ -172,7 +172,7 @@ const AdminDashboard = () => {
             className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded"
             onClick={() => setShowCrawlerForm(!showCrawlerForm)}
           >
-            {showCrawlerForm ? 'フォームを閉じる' : 'クローラーを実行'}
+            {showCrawlerForm ? 'Close Form' : 'Run Crawler'}
           </button>
           <button 
             className={`bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded ${
@@ -181,13 +181,13 @@ const AdminDashboard = () => {
             onClick={handleUpdateIndex}
             disabled={updatingIndex}
           >
-            {updatingIndex ? 'インデックス更新中...' : 'インデックスを更新'}
+            {updatingIndex ? 'Updating index...' : 'Update Index'}
           </button>
           <button 
             className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded"
             onClick={() => setShowClassificationForm(!showClassificationForm)}
           >
-            {showClassificationForm ? 'フォームを閉じる' : 'ドキュメント分類'}
+            {showClassificationForm ? 'Close Form' : 'Classify Documents'}
           </button>
         </div>
       </div>
@@ -199,7 +199,7 @@ const AdminDashboard = () => {
             : indexUpdateMessage.type === 'error'
               ? 'bg-red-100 border border-red-400 text-red-700'
               : 'bg-blue-100 border border-blue-400 text-blue-700'
-        }`}>
+        }`}>  
           {indexUpdateMessage.text}
         </div>
       )}

@@ -18,7 +18,7 @@ const AdminUsers = () => {
       setUsers(response.data);
     } catch (err) {
       console.error('Error fetching users:', err);
-      setError('ユーザー情報の取得中にエラーが発生しました');
+      setError('An error occurred while fetching user information');
     } finally {
       setLoading(false);
     }
@@ -28,12 +28,10 @@ const AdminUsers = () => {
     try {
       setActionInProgress(true);
       await axiosClient.put(`/admin/users/${userId}/admin`);
-      
       await fetchUsers();
-      
     } catch (err) {
       console.error('Error toggling admin status:', err);
-      setError('管理者権限の変更中にエラーが発生しました');
+      setError('An error occurred while changing admin privileges');
     } finally {
       setActionInProgress(false);
     }
@@ -49,14 +47,14 @@ const AdminUsers = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">ユーザー管理</h1>
-      
+      <h1 className="text-2xl font-bold mb-6">User Management</h1>
+
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
-      
+
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -65,13 +63,13 @@ const AdminUsers = () => {
                 ID
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                ユーザー名
+                Username
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                管理者権限
+                Admin Privileges
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                アクション
+                Action
               </th>
             </tr>
           </thead>
@@ -79,7 +77,7 @@ const AdminUsers = () => {
             {users.length === 0 ? (
               <tr>
                 <td colSpan="4" className="px-6 py-4 text-center text-gray-500">
-                  ユーザーが見つかりません
+                  No users found
                 </td>
               </tr>
             ) : (
@@ -94,11 +92,11 @@ const AdminUsers = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {user.is_admin ? (
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        はい
+                        Yes
                       </span>
                     ) : (
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                        いいえ
+                        No
                       </span>
                     )}
                   </td>
@@ -110,7 +108,7 @@ const AdminUsers = () => {
                         actionInProgress ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
                     >
-                      {user.is_admin ? '管理者権限を解除' : '管理者権限を付与'}
+                      {user.is_admin ? 'Revoke Admin' : 'Grant Admin'}
                     </button>
                   </td>
                 </tr>
